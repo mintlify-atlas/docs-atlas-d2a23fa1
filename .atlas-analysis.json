@@ -1,0 +1,143 @@
+{
+  "projectType": "saas",
+  "projectName": "POS Kasir",
+  "projectDescription": "A modern full-stack Point of Sales system with inventory management, digital payments via Midtrans, and real-time analytics.",
+  "theme": "mint",
+  "primaryColor": "#2563eb",
+  "lightColor": "#3b82f6",
+  "darkColor": "#1e40af",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "introduction",
+              "features",
+              "demo"
+            ]
+          },
+          {
+            "group": "Getting Started",
+            "pages": [
+              "getting-started/quickstart",
+              "getting-started/installation",
+              "getting-started/configuration",
+              "getting-started/first-steps"
+            ]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/authentication",
+              "features/user-management",
+              "features/inventory-management",
+              "features/orders-and-pos",
+              "features/payments",
+              "features/transactions",
+              "features/reports-analytics",
+              "features/activity-logs"
+            ]
+          },
+          {
+            "group": "Integrations",
+            "pages": [
+              "integrations/midtrans",
+              "integrations/cloudflare-r2",
+              "integrations/printer-setup"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/docker",
+              "deployment/production",
+              "deployment/environment-variables"
+            ]
+          },
+          {
+            "group": "Development",
+            "pages": [
+              "development/architecture",
+              "development/tech-stack",
+              "development/database-schema",
+              "development/contributing"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api/introduction",
+              "api/authentication",
+              "api/errors"
+            ]
+          },
+          {
+            "group": "Endpoints",
+            "pages": [
+              "api/auth",
+              "api/users",
+              "api/products",
+              "api/categories",
+              "api/orders",
+              "api/transactions",
+              "api/payment-methods",
+              "api/promotions",
+              "api/reports",
+              "api/activity-logs",
+              "api/settings",
+              "api/shifts"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Role-based access control with JWT authentication",
+    "Comprehensive inventory and product management with categories and variants",
+    "Efficient POS workflow with cart system and order processing",
+    "Digital payment integration via Midtrans Payment Gateway",
+    "Cloud storage integration with Cloudflare R2 for product images",
+    "Real-time dashboard with sales analytics and reports",
+    "Complete audit trails with activity logging",
+    "Multi-language support (English/Indonesian)",
+    "Receipt generation and ESC/POS printer integration",
+    "Shift management for cashier operations"
+  ],
+  "publicApiSurface": [
+    "POST /api/v1/auth/login - User authentication",
+    "POST /api/v1/auth/register - User registration",
+    "POST /api/v1/auth/logout - User logout",
+    "GET /api/v1/products - List products with pagination",
+    "POST /api/v1/products - Create new product",
+    "PUT /api/v1/products/:id - Update product",
+    "DELETE /api/v1/products/:id - Delete product",
+    "GET /api/v1/categories - List categories",
+    "POST /api/v1/orders - Create new order",
+    "PUT /api/v1/orders/:id - Update order status",
+    "POST /api/v1/orders/:id/payment - Process payment",
+    "GET /api/v1/transactions - List transactions with filters",
+    "GET /api/v1/reports/sales - Sales reports",
+    "GET /api/v1/reports/cashier-performance - Cashier performance metrics",
+    "GET /api/v1/reports/popular-products - Popular products analysis",
+    "GET /api/v1/activity-logs - Activity logs with pagination",
+    "GET /api/v1/users - List users (admin only)",
+    "POST /api/v1/users - Create user (admin only)",
+    "GET /api/v1/promotions - List active promotions",
+    "POST /api/v1/promotions - Create promotion",
+    "GET /api/v1/payment-methods - List payment methods",
+    "GET /api/v1/settings - Get system settings",
+    "PUT /api/v1/settings - Update system settings",
+    "GET /api/v1/shifts - List shifts",
+    "POST /api/v1/shifts/start - Start new shift",
+    "POST /api/v1/shifts/end - End current shift"
+  ]
+}
