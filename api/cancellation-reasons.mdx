@@ -1,0 +1,117 @@
+---
+title: 'Cancellation Reasons'
+description: 'Retrieve available order cancellation reasons'
+---
+
+## List Cancellation Reasons
+
+<CodeBlock title="GET /api/v1/cancellation-reasons">
+Get a list of all active cancellation reasons for orders.
+</CodeBlock>
+
+### Authentication
+Requires JWT authentication. Available to all authenticated roles: `admin`, `manager`, `cashier`.
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="data" type="array">
+  Array of cancellation reason objects
+  
+  <ResponseField name="id" type="integer">
+    Cancellation reason ID
+  </ResponseField>
+  
+  <ResponseField name="reason" type="string">
+    Short reason name
+  </ResponseField>
+  
+  <ResponseField name="description" type="string">
+    Optional detailed description of the cancellation reason
+  </ResponseField>
+  
+  <ResponseField name="is_active" type="boolean">
+    Whether this cancellation reason is currently active
+  </ResponseField>
+  
+  <ResponseField name="created_at" type="string">
+    Timestamp when the reason was created (ISO 8601 format)
+  </ResponseField>
+</ResponseField>
+
+### Example Request
+
+```bash
+curl -X GET https://api-pos.agprastyo.me/api/v1/cancellation-reasons \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+### Example Response
+
+```json
+{
+  "message": "Cancellation reasons retrieved successfully",
+  "data": [
+    {
+      "id": 1,
+      "reason": "Customer Changed Mind",
+      "description": "Customer decided not to proceed with the order",
+      "is_active": true,
+      "created_at": "2024-01-15T10:30:00Z"
+    },
+    {
+      "id": 2,
+      "reason": "Out of Stock",
+      "description": "One or more items in the order are out of stock",
+      "is_active": true,
+      "created_at": "2024-01-15T10:30:00Z"
+    },
+    {
+      "id": 3,
+      "reason": "Payment Failed",
+      "description": "Customer payment could not be processed",
+      "is_active": true,
+      "created_at": "2024-01-15T10:30:00Z"
+    }
+  ]
+}
+```
+
+## Use Cases
+
+### Order Cancellation Flow
+
+When cancelling an order, cashiers can select from predefined cancellation reasons to maintain consistent data for reporting and analysis.
+
+```javascript
+// Fetch available cancellation reasons
+const response = await fetch('/api/v1/cancellation-reasons', {
+  headers: {
+    'Authorization': `Bearer ${token}`
+  }
+});
+
+const { data: reasons } = await response.json();
+
+// Display reasons to user for selection
+// Then use selected reason ID when cancelling the order
+```
+
+### Reporting & Analytics
+
+Cancellation reasons are tracked with each cancelled order and can be used to:
+- Identify common reasons for order cancellations
+- Track cancellation trends over time
+- Improve operational processes based on cancellation data
+
+<Info>
+  Cancellation reasons are predefined in the system and are seeded during initial database setup. Only active reasons are returned by this endpoint.
+</Info>
+
+## Related Endpoints
+
+- [Orders API](/api/orders) - Cancel orders using cancellation reasons
+- [Reports API](/api/reports) - View cancellation analytics

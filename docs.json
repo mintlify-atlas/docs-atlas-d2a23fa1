@@ -105,7 +105,8 @@
               "api/reports",
               "api/activity-logs",
               "api/settings",
-              "api/shifts"
+              "api/shifts",
+              "api/cancellation-reasons"
             ]
           }
         ]
