@@ -1,0 +1,232 @@
+---
+title: 'Settings'
+description: 'Manage application settings and configurations'
+---
+
+## Branding Settings
+
+### Get Branding Settings
+
+<CodeGroup>
+```bash GET /settings/branding
+curl -X GET "http://localhost:8080/api/v1/settings/branding" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+</CodeGroup>
+
+Retrieve branding settings including app name, logo, footer text, and theme colors.
+
+#### Response
+
+<ResponseField name="data" type="object">
+  <Expandable title="BrandingSettingsResponse">
+    <ResponseField name="app_name" type="string" required>
+      Application name
+    </ResponseField>
+    
+    <ResponseField name="app_logo" type="string" required>
+      URL to the application logo image
+    </ResponseField>
+    
+    <ResponseField name="footer_text" type="string" required>
+      Footer text displayed in the application
+    </ResponseField>
+    
+    <ResponseField name="theme_color" type="string" required>
+      Primary theme color (hex format)
+    </ResponseField>
+    
+    <ResponseField name="theme_color_dark" type="string" required>
+      Dark mode theme color (hex format)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+#### Roles
+
+Accessible by: `admin`, `manager`, `cashier`
+
+---
+
+### Update Branding Settings
+
+<CodeGroup>
+```bash PUT /settings/branding
+curl -X PUT "http://localhost:8080/api/v1/settings/branding" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "app_name": "My POS System",
+    "app_logo": "https://example.com/logo.png",
+    "footer_text": "© 2024 My Company",
+    "theme_color": "#3B82F6",
+    "theme_color_dark": "#1E40AF"
+  }'
+```
+</CodeGroup>
+
+Update application branding settings.
+
+#### Request Body
+
+<ParamField body="app_name" type="string" required>
+  Application name (3-100 characters)
+</ParamField>
+
+<ParamField body="app_logo" type="string">
+  URL to the application logo
+</ParamField>
+
+<ParamField body="footer_text" type="string">
+  Footer text (max 200 characters)
+</ParamField>
+
+<ParamField body="theme_color" type="string" required>
+  Primary theme color in hex format (e.g., #3B82F6)
+</ParamField>
+
+<ParamField body="theme_color_dark" type="string" required>
+  Dark mode theme color in hex format
+</ParamField>
+
+#### Roles
+
+Accessible by: `admin` only
+
+---
+
+### Update App Logo
+
+<CodeGroup>
+```bash POST /settings/branding/logo
+curl -X POST "http://localhost:8080/api/v1/settings/branding/logo" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -F "logo=@/path/to/logo.png"
+```
+</CodeGroup>
+
+Upload and update the application logo image.
+
+#### Form Data
+
+<ParamField body="logo" type="file" required>
+  Logo image file (max 5MB, image formats only)
+</ParamField>
+
+#### Response
+
+<ResponseField name="data" type="object">
+  <ResponseField name="url" type="string" required>
+    URL of the uploaded logo
+  </ResponseField>
+</ResponseField>
+
+#### Roles
+
+Accessible by: `admin` only
+
+---
+
+## Printer Settings
+
+### Get Printer Settings
+
+<CodeGroup>
+```bash GET /settings/printer
+curl -X GET "http://localhost:8080/api/v1/settings/printer" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+</CodeGroup>
+
+Retrieve printer settings like connection string and paper width.
+
+#### Response
+
+<ResponseField name="data" type="object">
+  <Expandable title="PrinterSettingsResponse">
+    <ResponseField name="connection" type="string" required>
+      Printer connection string or IP address
+    </ResponseField>
+    
+    <ResponseField name="paper_width" type="string" required>
+      Paper width: `58mm` or `80mm`
+    </ResponseField>
+    
+    <ResponseField name="auto_print" type="boolean" required>
+      Whether to automatically print receipts
+    </ResponseField>
+    
+    <ResponseField name="print_method" type="string" required>
+      Print method: `BE` (Backend) or `FE` (Frontend)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+#### Roles
+
+Accessible by: `admin`, `manager`, `cashier`
+
+---
+
+### Update Printer Settings
+
+<CodeGroup>
+```bash PUT /settings/printer
+curl -X PUT "http://localhost:8080/api/v1/settings/printer" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "connection": "192.168.1.100",
+    "paper_width": "80mm",
+    "auto_print": true,
+    "print_method": "BE"
+  }'
+```
+</CodeGroup>
+
+Update global printer configuration.
+
+#### Request Body
+
+<ParamField body="connection" type="string" required>
+  Printer connection string, IP address, or device path
+</ParamField>
+
+<ParamField body="paper_width" type="string" required>
+  Paper width: `58mm` or `80mm`
+</ParamField>
+
+<ParamField body="auto_print" type="boolean" required>
+  Enable/disable automatic printing of receipts
+</ParamField>
+
+<ParamField body="print_method" type="string" required>
+  Print method:
+  - `BE` - Backend printing (server sends to printer)
+  - `FE` - Frontend printing (client browser prints)
+</ParamField>
+
+#### Roles
+
+Accessible by: `admin` only
+
+---
+
+### Test Printer Connection
+
+<CodeGroup>
+```bash POST /settings/printer/test
+curl -X POST "http://localhost:8080/api/v1/settings/printer/test" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+</CodeGroup>
+
+Send a test print command to the configured printer.
+
+#### Roles
+
+Accessible by: `admin` only
+
+<Note>
+Make sure the printer is connected and powered on before testing. The test will print a sample receipt to verify the connection.
+</Note>

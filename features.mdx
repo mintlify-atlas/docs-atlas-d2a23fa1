@@ -1,0 +1,250 @@
+---
+title: "Features Overview"
+description: "Comprehensive guide to POS Kasir's core functionality, advanced features, and capabilities for modern retail operations"
+---
+
+## Core Functionality
+
+POS Kasir provides a complete suite of features designed for modern retail operations.
+
+### User Management & Role-Based Access Control
+
+<Card icon="shield-halved" title="Secure Authentication">
+  - JWT-based authentication system
+  - Secure password hashing and validation
+  - Session management and token refresh
+  - Role-based access control (RBAC)
+</Card>
+
+**Available Roles:**
+- **Admin:** Full system access including user management, reports, and system settings
+- **Cashier:** Limited access to POS operations, order processing, and shift management
+
+Each role has specific permissions enforced at the API level, ensuring secure access to resources.
+
+### Inventory Management
+
+<CardGroup cols={2}>
+  <Card icon="box" title="Product Management">
+    - Create and update products with detailed information
+    - Upload product images to Cloudflare R2
+    - Set pricing, cost, and stock quantities
+    - Track stock levels in real-time
+  </Card>
+  <Card icon="layer-group" title="Categories & Organization">
+    - Organize products by categories
+    - Support for product variants and options
+    - Bulk operations for efficiency
+    - Stock history tracking
+  </Card>
+</CardGroup>
+
+**Product Features:**
+- Product name, description, and SKU
+- Multiple pricing tiers (retail, wholesale)
+- Stock quantity tracking with low stock alerts
+- Product images with cloud storage
+- Product options/variants (size, color, etc.)
+- Category assignment for organization
+
+### Order Processing & POS
+
+<Card icon="cash-register" title="Point of Sale System">
+  Modern POS interface designed for speed and efficiency
+</Card>
+
+**Order Management:**
+- Quick product search and selection
+- Real-time cart management
+- Support for multiple order types (dine-in, takeaway, delivery)
+- Apply promotions and discounts automatically
+- Order status tracking (pending, completed, cancelled)
+- Partial payments and split bills
+- Customer order history
+
+**Cart Features:**
+- Add/remove items with quantity adjustment
+- Apply product options (variants)
+- Real-time price calculation
+- Discount and promotion application
+- Tax calculation support
+
+### Transaction Management
+
+<CardGroup cols={2}>
+  <Card icon="file-invoice-dollar" title="Transaction History">
+    - Complete transaction records
+    - Digital receipt generation
+    - Transaction search and filtering
+    - Export transaction data
+  </Card>
+  <Card icon="clock" title="Shift Management">
+    - Start and end shifts
+    - Cash drawer tracking
+    - Cash in/out transactions
+    - Shift reconciliation reports
+  </Card>
+</CardGroup>
+
+## Advanced Features
+
+### Digital Payment Integration
+
+<Card icon="wallet" title="Midtrans Payment Gateway">
+  Seamless integration with Midtrans for digital payment processing
+</Card>
+
+**Supported Payment Methods:**
+- Credit/Debit Cards (Visa, MasterCard, JCB)
+- E-Wallets (GoPay, OVO, Dana, LinkAja, ShopeePay)
+- Bank Transfers (Virtual Account)
+- Installment payments
+- QR Code payments (QRIS)
+
+<Warning>
+  The payment integration is currently running in **sandbox mode** for demonstration purposes. Test credentials are required for transactions.
+</Warning>
+
+**Payment Features:**
+- Real-time payment status updates via webhooks
+- Automatic order status synchronization
+- Payment retry mechanism
+- Refund processing support
+- Transaction security with encryption
+
+### Cloud Storage Integration
+
+<Card icon="cloud-arrow-up" title="Cloudflare R2 Storage">
+  Scalable and efficient image storage solution
+</Card>
+
+**Storage Features:**
+- Product image uploads
+- Automatic image optimization
+- CDN delivery for fast loading
+- Secure URL generation
+- Cost-effective storage pricing
+
+### Dashboard & Analytics
+
+<CardGroup cols={2}>
+  <Card icon="chart-simple" title="Sales Reports">
+    - Daily, weekly, monthly sales summaries
+    - Revenue trends and comparisons
+    - Top-selling products analysis
+    - Payment method performance
+  </Card>
+  <Card icon="users-gear" title="Performance Metrics">
+    - Cashier performance tracking
+    - Transaction speed metrics
+    - Cancellation reasons analysis
+    - Profit margin calculations
+  </Card>
+</CardGroup>
+
+**Available Reports:**
+- **Dashboard Summary:** Real-time overview of key metrics
+- **Sales Report:** Detailed sales analysis with time filters
+- **Product Performance:** Top products, slow movers, and inventory insights
+- **Cashier Performance:** Individual cashier statistics and KPIs
+- **Profit Analysis:** Gross profit, margins, and cost analysis
+- **Payment Methods:** Transaction breakdown by payment type
+- **Cancellation Report:** Order cancellation trends and reasons
+
+### Activity Logging & Audit Trail
+
+<Card icon="list-check" title="Complete Audit Trail">
+  Track all system changes and user activities for compliance and security
+</Card>
+
+**Logged Activities:**
+- User login/logout events
+- Product creation, updates, and deletions
+- Order placements and modifications
+- Payment transactions
+- Settings changes
+- User management actions
+- Inventory adjustments
+
+**Log Details Include:**
+- Timestamp of the action
+- User who performed the action
+- Entity type and ID affected
+- Action type (create, update, delete)
+- Before/after values for changes
+- IP address and user agent
+
+### Promotion System
+
+<Card icon="tags" title="Flexible Promotions">
+  Create and manage various types of promotions and discounts
+</Card>
+
+**Promotion Types:**
+- Percentage discounts
+- Fixed amount discounts
+- Buy X Get Y offers
+- Minimum purchase requirements
+- Category-specific promotions
+- Time-limited offers
+
+**Promotion Features:**
+- Set start and end dates
+- Define applicable products or categories
+- Set usage limits
+- Automatic application at checkout
+- Priority-based promotion rules
+
+### Printer Integration
+
+<Card icon="print" title="Receipt Printing">
+  Configure thermal printers for receipt generation
+</Card>
+
+**Print Features:**
+- Configurable receipt templates
+- Company branding on receipts
+- Transaction details printing
+- Shift summary reports
+- Kitchen order printing (KOT)
+
+## Multi-language Support
+
+The frontend application supports multiple languages out of the box:
+- **English:** Full interface translation
+- **Indonesian (Bahasa Indonesia):** Complete localization
+
+Language detection is automatic based on browser settings, with manual override available.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Try the Demo"
+    icon="play"
+    href="/demo"
+  >
+    Experience these features in action with our live demo
+  </Card>
+  <Card
+    title="Installation Guide"
+    icon="download"
+    href="/getting-started/installation"
+  >
+    Set up POS Kasir in your environment
+  </Card>
+  <Card
+    title="API Reference"
+    icon="book"
+    href="/api/introduction"
+  >
+    Explore detailed API documentation
+  </Card>
+  <Card
+    title="Configuration"
+    icon="gear"
+    href="/getting-started/configuration"
+  >
+    Learn how to configure POS Kasir for your needs
+  </Card>
+</CardGroup>

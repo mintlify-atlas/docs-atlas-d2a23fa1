@@ -1,0 +1,313 @@
+---
+title: "Live Demo"
+description: "Try POS Kasir with our live demo environment - explore features, test workflows, and experience the system firsthand"
+---
+
+## Access the Demo
+
+Experience POS Kasir in action with our hosted demo environment. No installation required!
+
+<CardGroup cols={2}>
+  <Card
+    title="Frontend Application"
+    icon="desktop"
+    href="https://pos-kasir.agprastyo.me/"
+  >
+    Access the complete web interface with all features
+  </Card>
+  <Card
+    title="API Documentation"
+    icon="code"
+    href="https://api-pos.agprastyo.me/api/v1/swagger/index.html"
+  >
+    Explore the Swagger API documentation and test endpoints
+  </Card>
+</CardGroup>
+
+## Demo Credentials
+
+Use these credentials to log in and explore different user roles:
+
+### Admin Account
+
+<CodeGroup>
+```text Admin Login
+Email: admin@example.com
+Password: admin123
+```
+</CodeGroup>
+
+**Admin Capabilities:**
+- Full system access
+- User management
+- Product and inventory management
+- View all reports and analytics
+- Configure system settings
+- Manage promotions and discounts
+- Access activity logs
+
+### Cashier Account
+
+<CodeGroup>
+```text Cashier Login
+Email: cashier@example.com
+Password: cashier123
+```
+</CodeGroup>
+
+**Cashier Capabilities:**
+- POS operations and order processing
+- View assigned orders
+- Process payments
+- Manage shifts (start/end)
+- View limited reports
+- Print receipts
+
+<Note>
+  Demo accounts are reset periodically. Any changes you make will be temporary and may be cleared during maintenance windows.
+</Note>
+
+## Demo Environment Details
+
+### Features Available
+
+The demo environment includes all major features of POS Kasir:
+
+<AccordionGroup>
+  <Accordion title="Point of Sale" icon="cash-register">
+    - Browse and search products
+    - Add items to cart with quantities
+    - Apply product options/variants
+    - Select payment methods
+    - Complete transactions
+    - Generate receipts
+  </Accordion>
+
+  <Accordion title="Inventory Management" icon="boxes-stacked">
+    - View product catalog
+    - Create new products (Admin only)
+    - Update product details
+    - Upload product images
+    - Manage categories
+    - Track stock levels
+  </Accordion>
+
+  <Accordion title="Reports & Analytics" icon="chart-line">
+    - Dashboard with key metrics
+    - Sales reports by date range
+    - Top-selling products
+    - Cashier performance metrics
+    - Payment method breakdown
+    - Profit analysis
+  </Accordion>
+
+  <Accordion title="User Management" icon="users" defaultOpen={false}>
+    - Create and edit users (Admin only)
+    - Assign roles and permissions
+    - View user activity
+    - Manage user status
+  </Accordion>
+
+  <Accordion title="Digital Payments" icon="credit-card">
+    - Midtrans payment integration
+    - Multiple payment methods
+    - Real-time payment status
+    - Payment webhooks simulation
+  </Accordion>
+</AccordionGroup>
+
+### Payment Integration
+
+<Warning>
+  The Midtrans payment integration is running in **sandbox mode** for demonstration purposes. Use the test credentials provided by Midtrans for payment testing.
+</Warning>
+
+**Test Payment Methods:**
+
+You can test various payment scenarios using Midtrans sandbox:
+
+<Tabs>
+  <Tab title="Credit Card">
+    ```text Test Card
+    Card Number: 4811 1111 1111 1114
+    CVV: 123
+    Exp Date: Any future date
+    3DS Password: 112233
+    ```
+  </Tab>
+  <Tab title="GoPay">
+    Use the Midtrans Simulator app or web simulator to complete GoPay test transactions.
+  </Tab>
+  <Tab title="Bank Transfer">
+    Virtual account numbers are generated automatically. Use the Midtrans simulator to mark payments as successful.
+  </Tab>
+</Tabs>
+
+For complete test credentials, visit: [Midtrans Sandbox Documentation](https://docs.midtrans.com/docs/testing-payment-on-sandbox)
+
+## API Endpoints
+
+### Base URLs
+
+<CodeGroup>
+```text Production Demo
+https://api-pos.agprastyo.me/api/v1
+```
+
+```text Local Development
+http://localhost:8080/api/v1
+```
+</CodeGroup>
+
+### Interactive API Documentation
+
+The demo includes full Swagger documentation where you can:
+- View all available endpoints
+- Test API calls directly from the browser
+- See request/response schemas
+- Understand authentication requirements
+
+**Swagger UI:** [https://api-pos.agprastyo.me/api/v1/swagger/index.html](https://api-pos.agprastyo.me/api/v1/swagger/index.html)
+
+### Authentication
+
+To test API endpoints in Swagger:
+
+<Steps>
+  <Step title="Login via API">
+    Use the `/auth/login` endpoint with demo credentials to get a JWT token
+  </Step>
+  <Step title="Authorize">
+    Click the **Authorize** button in Swagger UI and paste the JWT token
+  </Step>
+  <Step title="Test Endpoints">
+    Try out any endpoint with the authenticated session
+  </Step>
+</Steps>
+
+## What to Try
+
+Here are some suggested workflows to explore in the demo:
+
+### 1. Complete a Sale Transaction
+
+<Steps>
+  <Step title="Login as Cashier">
+    Start by logging in with the cashier account
+  </Step>
+  <Step title="Start a Shift">
+    Navigate to Shift Management and start your shift with an opening balance
+  </Step>
+  <Step title="Create an Order">
+    Go to the POS screen, select products, and add them to the cart
+  </Step>
+  <Step title="Process Payment">
+    Choose a payment method and complete the transaction
+  </Step>
+  <Step title="View Receipt">
+    Review the generated receipt and transaction details
+  </Step>
+</Steps>
+
+### 2. Manage Inventory (Admin)
+
+<Steps>
+  <Step title="Login as Admin">
+    Use the admin credentials to access all features
+  </Step>
+  <Step title="Add a Product">
+    Navigate to Products and create a new product with details
+  </Step>
+  <Step title="Upload Image">
+    Add a product image (uploaded to Cloudflare R2)
+  </Step>
+  <Step title="Create Variants">
+    Add product options like size or color variants
+  </Step>
+  <Step title="Assign Category">
+    Organize the product into appropriate categories
+  </Step>
+</Steps>
+
+### 3. View Analytics
+
+<Steps>
+  <Step title="Access Dashboard">
+    View real-time sales metrics and key performance indicators
+  </Step>
+  <Step title="Sales Report">
+    Generate sales reports for different date ranges
+  </Step>
+  <Step title="Product Performance">
+    Analyze top-selling products and inventory trends
+  </Step>
+  <Step title="Cashier Metrics">
+    Review individual cashier performance statistics
+  </Step>
+</Steps>
+
+## Limitations
+
+Please note the following limitations of the demo environment:
+
+<Warning>
+  - Data is reset periodically (typically weekly)
+  - Concurrent user limit may apply during high traffic
+  - Email notifications are disabled
+  - Some rate limits are in place to ensure fair usage
+  - File uploads are limited to 5MB per image
+</Warning>
+
+## Ready to Deploy?
+
+Impressed with what you see? Set up your own instance of POS Kasir:
+
+<CardGroup cols={2}>
+  <Card
+    title="Installation Guide"
+    icon="download"
+    href="/getting-started/installation"
+  >
+    Step-by-step guide to install POS Kasir locally
+  </Card>
+  <Card
+    title="Docker Deployment"
+    icon="docker"
+    href="/deployment/docker"
+  >
+    Deploy using Docker and Docker Compose
+  </Card>
+  <Card
+    title="Configuration"
+    icon="gear"
+    href="/getting-started/configuration"
+  >
+    Configure environment variables and settings
+  </Card>
+  <Card
+    title="Production Guide"
+    icon="server"
+    href="/deployment/production"
+  >
+    Best practices for production deployment
+  </Card>
+</CardGroup>
+
+## Support & Feedback
+
+Have questions or feedback about the demo?
+
+- **GitHub Issues:** [Report bugs or suggest features](https://github.com/agpprastyo/POS-kasir/issues)
+- **GitHub Discussions:** [Ask questions or share ideas](https://github.com/agpprastyo/POS-kasir/discussions)
+- **Source Code:** [View on GitHub](https://github.com/agpprastyo/POS-kasir)
+
+## Project Information
+
+**Author:** Agung Prasetyo
+- GitHub: [agpprastyo](https://github.com/agpprastyo)
+- LinkedIn: [agprastyo](https://www.linkedin.com/in/agprastyo)
+- Portfolio: [portfolio.agprastyo.me](https://portfolio.agprastyo.me)
+
+<Note>
+  POS Kasir is an open-source portfolio project showcasing full-stack development capabilities. Feel free to explore, learn, and contribute!
+</Note>

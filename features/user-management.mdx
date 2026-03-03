@@ -1,0 +1,604 @@
+---
+title: User Management
+description: Complete user CRUD operations with role-based access control (Admin, Manager, Cashier)
+---
+
+## Overview
+
+POS Kasir implements a comprehensive user management system with three distinct roles: Admin, Manager, and Cashier. The system supports full CRUD operations, user status management, and avatar uploads.
+
+## User Roles
+
+```go title="internal/common/middleware/role.go:9-19"
+type UserRole string
+
+const (
+    UserRoleAdmin   UserRole = "admin"
+    UserRoleManager UserRole = "manager"
+    UserRoleCashier UserRole = "cashier"
+)
+
+var RoleLevel = map[UserRole]int{
+    UserRoleAdmin:   3,
+    UserRoleManager: 2,
+    UserRoleCashier: 1,
+}
+```
+
+### Role Hierarchy
+
+- **Admin** (Level 3): Full system access, can manage all users and settings
+- **Manager** (Level 2): Can manage products, view reports, manage cashiers
+- **Cashier** (Level 1): Can process orders and view assigned transactions
+
+## User Operations
+
+### Create User
+
+Admins can create new users with specific roles.
+
+**Endpoint:** `POST /users`
+
+**Required Role:** Admin
+
+```go title="internal/user/user_handler.go:158-217"
+func (h *UsrHandler) CreateUserHandler(c fiber.Ctx) error {
+    ctx := c.RequestCtx()
+    req := new(CreateUserRequest)
+    if err := c.Bind().Body(req); err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid request body",
+            Error:   err.Error(),
+        })
+    }
+
+    if err := h.validator.Validate(req); err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Validation failed",
+            Error:   err.Error(),
+        })
+    }
+
+    user, err := h.service.CreateUser(ctx, *req)
+    if err != nil {
+        switch {
+        case errors.Is(err, common.ErrUserExists):
+            return c.Status(fiber.StatusConflict).JSON(common.ErrorResponse{
+                Message: "User already exists",
+            })
+        case errors.Is(err, common.ErrUsernameExists):
+            return c.Status(fiber.StatusConflict).JSON(common.ErrorResponse{
+                Message: "Username already exists",
+            })
+        case errors.Is(err, common.ErrEmailExists):
+            return c.Status(fiber.StatusConflict).JSON(common.ErrorResponse{
+                Message: "Email already exists",
+            })
+        default:
+            return c.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+                Message: "Failed to create user",
+            })
+        }
+    }
+
+    return c.Status(fiber.StatusCreated).JSON(common.SuccessResponse{
+        Message: "User created successfully",
+        Data:    user,
+    })
+}
+```
+
+**Request Body:**
+```json
+{
+  "username": "john_cashier",
+  "email": "john@example.com",
+  "password": "password123",
+  "role": "cashier",
+  "is_active": true
+}
+```
+
+**Response:**
+```json
+{
+  "message": "User created successfully",
+  "data": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "username": "john_cashier",
+    "email": "john@example.com",
+    "role": "cashier",
+    "is_active": true,
+    "created_at": "2024-03-03T10:00:00Z",
+    "updated_at": "2024-03-03T10:00:00Z"
+  }
+}
+```
+
+### List Users
+
+Retrieve paginated list of users with filtering and search.
+
+**Endpoint:** `GET /users`
+
+**Required Role:** Admin, Manager, Cashier
+
+```go title="internal/user/user_handler.go:89-156"
+func (h *UsrHandler) GetAllUsersHandler(c fiber.Ctx) error {
+    ctx := c.RequestCtx()
+    req := new(UsersRequest)
+    if err := c.Bind().Query(req); err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid query parameters",
+            Error:   err.Error(),
+        })
+    }
+
+    // Parse is_active boolean parameter
+    isActiveStr := c.Query("is_active")
+    if isActiveStr != "" {
+        parsedBool, err := strconv.ParseBool(isActiveStr)
+        if err == nil {
+            req.IsActive = &parsedBool
+        }
+    }
+
+    if err := h.validator.Validate(req); err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Validation failed",
+            Error:   err.Error(),
+        })
+    }
+
+    response, err := h.service.GetAllUsers(ctx, *req)
+    if err != nil {
+        switch {
+        case errors.Is(err, common.ErrNotFound):
+            return c.Status(fiber.StatusOK).JSON(common.SuccessResponse{
+                Message: "Users retrieved successfully",
+                Data:    response,
+            })
+        default:
+            return c.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+                Message: "Failed to get users",
+            })
+        }
+    }
+
+    return c.Status(fiber.StatusOK).JSON(common.SuccessResponse{
+        Message: "Users retrieved successfully",
+        Data:    response,
+    })
+}
+```
+
+**Query Parameters:**
+- `page` - Page number (default: 1)
+- `limit` - Items per page (default: 10)
+- `search` - Search by username or email
+- `role` - Filter by role (admin, manager, cashier)
+- `is_active` - Filter by active status (true/false)
+- `status` - Filter by account status (active, deleted, all)
+- `sortBy` - Sort column (created_at, username)
+- `sortOrder` - Sort direction (asc, desc)
+
+**Example Request:**
+```
+GET /users?page=1&limit=10&role=cashier&is_active=true&sortBy=created_at&sortOrder=desc
+```
+
+**Response:**
+```json
+{
+  "message": "Users retrieved successfully",
+  "data": {
+    "users": [
+      {
+        "id": "550e8400-e29b-41d4-a716-446655440000",
+        "username": "john_cashier",
+        "email": "john@example.com",
+        "role": "cashier",
+        "is_active": true,
+        "avatar": "https://storage.example.com/avatars/550e8400.jpg",
+        "created_at": "2024-03-03T10:00:00Z",
+        "updated_at": "2024-03-03T10:00:00Z"
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "limit": 10,
+      "total_items": 25,
+      "total_pages": 3
+    }
+  }
+}
+```
+
+### Get User by ID
+
+**Endpoint:** `GET /users/{id}`
+
+**Required Role:** Admin, Manager
+
+```go title="internal/user/user_handler.go:219-270"
+func (h *UsrHandler) GetUserByIDHandler(c fiber.Ctx) error {
+    ctx := c.RequestCtx()
+    id := c.Params("id")
+    if id == "" {
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "User ID is required",
+        })
+    }
+
+    idParsed, err := uuid.Parse(id)
+    if err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid user ID format",
+        })
+    }
+
+    user, err := h.service.GetUserByID(ctx, idParsed)
+    if err != nil {
+        switch {
+        case errors.Is(err, common.ErrNotFound):
+            return c.Status(fiber.StatusNotFound).JSON(common.ErrorResponse{
+                Message: "User not found",
+            })
+        default:
+            return c.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+                Message: "Failed to get user",
+            })
+        }
+    }
+
+    return c.Status(fiber.StatusOK).JSON(common.SuccessResponse{
+        Message: "User retrieved successfully",
+        Data:    user,
+    })
+}
+```
+
+### Update User
+
+**Endpoint:** `PUT /users/{id}`
+
+**Required Role:** Admin
+
+```go title="internal/user/user_handler.go:272-364"
+func (h *UsrHandler) UpdateUserHandler(c fiber.Ctx) error {
+    ctx := c.RequestCtx()
+    id := c.Params("id")
+    role := c.Locals("role")
+    if id == "" {
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "User ID is required",
+        })
+    }
+
+    idParsed, err := uuid.Parse(id)
+    if err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid user ID format",
+        })
+    }
+
+    req := new(UpdateUserRequest)
+    if err := c.Bind().Body(req); err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid request body",
+        })
+    }
+
+    if err := h.validator.Validate(req); err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Validation failed",
+            Error:   err.Error(),
+        })
+    }
+
+    // Only admins can change roles
+    if req.Role != nil {
+        if role != user_repo.UserRoleAdmin {
+            return c.Status(fiber.StatusForbidden).JSON(common.ErrorResponse{
+                Message: "You are not authorized to change user roles",
+            })
+        }
+    }
+
+    user, err := h.service.UpdateUser(ctx, idParsed, *req)
+    if err != nil {
+        switch {
+        case errors.Is(err, common.ErrNotFound):
+            return c.Status(fiber.StatusNotFound).JSON(common.ErrorResponse{
+                Message: "User not found",
+            })
+        case errors.Is(err, common.ErrUsernameExists):
+            return c.Status(fiber.StatusConflict).JSON(common.ErrorResponse{
+                Message: "Username already exists",
+            })
+        case errors.Is(err, common.ErrEmailExists):
+            return c.Status(fiber.StatusConflict).JSON(common.ErrorResponse{
+                Message: "Email already exists",
+            })
+        default:
+            return c.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+                Message: "Failed to update user",
+            })
+        }
+    }
+
+    return c.Status(fiber.StatusOK).JSON(common.SuccessResponse{
+        Message: "User updated successfully",
+        Data:    user,
+    })
+}
+```
+
+**Request Body:**
+```json
+{
+  "username": "john_updated",
+  "email": "john.new@example.com",
+  "role": "manager",
+  "is_active": true
+}
+```
+
+### Toggle User Status
+
+Toggle a user's active/inactive status.
+
+**Endpoint:** `POST /users/{id}/toggle-status`
+
+**Required Role:** Admin
+
+```go title="internal/user/user_handler.go:366-420"
+func (h *UsrHandler) ToggleUserStatusHandler(c fiber.Ctx) error {
+    ctx := c.RequestCtx()
+    id := c.Params("id")
+    if id == "" {
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "User ID is required",
+        })
+    }
+
+    idParsed, err := uuid.Parse(id)
+    if err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid user ID format",
+        })
+    }
+
+    if err := h.service.ToggleUserStatus(ctx, idParsed); err != nil {
+        switch {
+        case errors.Is(err, common.ErrNotFound):
+            return c.Status(fiber.StatusNotFound).JSON(common.ErrorResponse{
+                Message: "User not found",
+            })
+        case errors.Is(err, common.ErrInternal):
+            return c.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+                Message: "Failed to toggle user status",
+            })
+        default:
+            return c.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+                Message: "Unexpected error occurred",
+            })
+        }
+    }
+
+    return c.Status(fiber.StatusOK).JSON(common.SuccessResponse{
+        Message: "User status toggled successfully",
+    })
+}
+```
+
+### Delete User
+
+**Endpoint:** `DELETE /users/{id}`
+
+**Required Role:** Admin
+
+```go title="internal/user/user_handler.go:38-87"
+func (h *UsrHandler) DeleteUserHandler(c fiber.Ctx) error {
+    ctx := c.RequestCtx()
+    id := c.Params("id")
+    if id == "" {
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "User ID is required",
+        })
+    }
+
+    idParsed, err := uuid.Parse(id)
+    if err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid user ID format",
+        })
+    }
+
+    if err := h.service.DeleteUser(ctx, idParsed); err != nil {
+        switch {
+        case errors.Is(err, common.ErrNotFound):
+            return c.Status(fiber.StatusNotFound).JSON(common.ErrorResponse{
+                Message: "User not found",
+            })
+        default:
+            return c.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+                Message: "Failed to delete user",
+            })
+        }
+    }
+
+    return c.Status(fiber.StatusOK).JSON(common.SuccessResponse{
+        Message: "User deleted successfully",
+    })
+}
+```
+
+## Avatar Management
+
+Users can upload and update their profile pictures.
+
+**Endpoint:** `PUT /auth/me/avatar`
+
+**Required Role:** Authenticated
+
+```go title="internal/user/auth_handler.go:401-515"
+func (h *AthHandler) UpdateAvatarHandler(c fiber.Ctx) error {
+    ctx := c.RequestCtx()
+    var userUUID uuid.UUID
+    userVal := c.Locals("user_id")
+    // ... parse user ID
+
+    file, err := c.FormFile("avatar")
+    if err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Failed to upload avatar",
+        })
+    }
+
+    fileData, err := file.Open()
+    if err != nil {
+        return c.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+            Message: "Failed to process avatar file",
+        })
+    }
+    defer fileData.Close()
+
+    data, err := io.ReadAll(fileData)
+    if err != nil {
+        return c.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+            Message: "Failed to read avatar file",
+        })
+    }
+
+    response, err := h.Service.UploadAvatar(ctx, userUUID, data)
+    if err != nil {
+        switch {
+        case errors.Is(err, common.ErrFileTooLarge):
+            return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+                Message: "File size exceeds the maximum limit",
+            })
+        case errors.Is(err, common.ErrFileTypeNotSupported):
+            return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+                Message: "File type is not supported",
+            })
+        case errors.Is(err, common.ErrImageNotSquare):
+            return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+                Message: "Image must be square",
+            })
+        case errors.Is(err, common.ErrImageTooSmall):
+            return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+                Message: "Image dimensions are too small, must be at least 300x300 pixels",
+            })
+        default:
+            return c.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+                Message: "Failed to upload avatar",
+            })
+        }
+    }
+
+    return c.Status(fiber.StatusOK).JSON(common.SuccessResponse{
+        Message: "Avatar updated successfully",
+        Data:    response,
+    })
+}
+```
+
+### Avatar Upload Service
+
+```go title="internal/user/auth_service.go:139-214"
+func (s *AthService) UploadAvatar(ctx context.Context, userID uuid.UUID, data []byte) (*ProfileResponse, error) {
+    // Validate file size (max 3MB)
+    const maxSize = 3 * 1024 * 1024
+    if len(data) > maxSize {
+        return nil, common.ErrFileTooLarge
+    }
+
+    // Decode and validate image
+    img, _, err := image.Decode(bytes.NewReader(data))
+    if err != nil {
+        return nil, common.ErrFileTypeNotSupported
+    }
+    
+    bounds := img.Bounds()
+    if bounds.Dx() != bounds.Dy() {
+        return nil, common.ErrImageNotSquare
+    }
+
+    // Encode as JPEG with 75% quality
+    var buf bytes.Buffer
+    err = jpeg.Encode(&buf, img, &jpeg.Options{Quality: 75})
+    if err != nil {
+        return nil, common.ErrImageProcessingFailed
+    }
+
+    // Upload to storage
+    filename := "avatars/" + userID.String() + ".jpg"
+    url, err := s.AvatarRepo.UploadAvatar(ctx, filename, buf.Bytes())
+    if err != nil {
+        return nil, common.ErrUploadFailed
+    }
+
+    // Update user record
+    params := user_repo.UpdateUserParams{
+        ID:     userID,
+        Avatar: &filename,
+    }
+    profile, err := s.UserRepo.UpdateUser(ctx, params)
+    if err != nil {
+        return nil, common.ErrUploadFailed
+    }
+
+    // Log activity
+    s.ActivityLogger.Log(
+        ctx,
+        actorID,
+        activitylog_repo.LogActionTypeUPDATEAVATAR,
+        activitylog_repo.LogEntityTypeUSER,
+        profile.ID.String(),
+        logDetails,
+    )
+
+    return &ProfileResponse{
+        ID:        profile.ID,
+        Username:  profile.Username,
+        Avatar:    &url,
+        // ... other fields
+    }, nil
+}
+```
+
+**Avatar Requirements:**
+- Maximum file size: 3MB
+- Supported formats: JPEG, PNG
+- Image must be square (same width and height)
+- Minimum dimensions: 300x300 pixels
+- Images are automatically converted to JPEG with 75% quality
+
+## Data Transfer Objects
+
+```go title="internal/user/dto.go:63-76"
+type CreateUserRequest struct {
+    Username string              `json:"username" validate:"required,min=3,max=50"`
+    Email    string              `json:"email" validate:"required,email,max=100"`
+    Password string              `json:"password" validate:"required,min=6,max=100"`
+    Role     repository.UserRole `json:"role" validate:"required,oneof=admin manager cashier"`
+    IsActive *bool               `json:"is_active,omitempty"`
+}
+
+type UpdateUserRequest struct {
+    Username *string              `json:"username,omitempty" validate:"omitempty,min=3,max=50"`
+    Email    *string              `json:"email,omitempty" validate:"omitempty,email,max=100"`
+    Role     *repository.UserRole `json:"role,omitempty" validate:"omitempty,oneof=admin manager cashier"`
+    IsActive *bool                `json:"is_active,omitempty"`
+}
+```
+
+## Best Practices
+
+1. **Role Assignment** - Only admins should be able to assign or change user roles
+2. **Password Requirements** - Enforce minimum 6 characters for passwords
+3. **Unique Constraints** - Validate username and email uniqueness before creation
+4. **Soft Delete** - Consider using soft deletes for audit trail purposes
+5. **Activity Logging** - Log all user management operations for security audits
+6. **Avatar Validation** - Always validate image dimensions and file size before upload

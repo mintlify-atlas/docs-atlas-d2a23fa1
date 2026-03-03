@@ -1,0 +1,183 @@
+---
+title: 'API Overview'
+description: 'Introduction to the POS Kasir REST API'
+---
+
+## Welcome to POS Kasir API
+
+The POS Kasir API is a comprehensive RESTful API for managing point-of-sale operations. This API provides endpoints for managing products, orders, payments, users, inventory, and more.
+
+## Base URL
+
+All API requests should be made to:
+
+```
+https://api-pos.agprastyo.me/api/v1
+```
+
+<Note>
+  All endpoints in this documentation are relative to the base URL above.
+</Note>
+
+## API Documentation
+
+You can explore the complete API specification using Swagger UI:
+
+<Card
+  title="Interactive API Documentation"
+  icon="swagger"
+  href="https://api-pos.agprastyo.me/swagger/index.html"
+>
+  View and test all API endpoints in the interactive Swagger interface
+</Card>
+
+## API Features
+
+The POS Kasir API provides the following capabilities:
+
+### Core Operations
+- **Authentication & Authorization** - JWT-based authentication with role-based access control
+- **Product Management** - CRUD operations for products, categories, and product options
+- **Order Management** - Create, update, and track orders with various statuses
+- **Payment Processing** - Support for manual payments and Midtrans integration (QRIS/GoPay)
+- **Inventory Control** - Stock tracking with history and change management
+
+### Business Features
+- **Promotions** - Flexible promotion system with rules and targets
+- **Reports & Analytics** - Sales reports, profit analysis, and performance metrics
+- **Shift Management** - Cash drawer management with shift-based tracking
+- **Activity Logs** - Comprehensive audit trail for all system activities
+- **User Management** - Multi-role user system (admin, manager, cashier)
+
+## Request Format
+
+All API requests should include:
+
+- **Content-Type**: `application/json` for POST/PUT requests
+- **Authorization**: Bearer token in the header (for authenticated endpoints)
+
+```json
+{
+  "Content-Type": "application/json",
+  "Authorization": "Bearer YOUR_ACCESS_TOKEN"
+}
+```
+
+## Response Format
+
+All API responses follow a consistent structure:
+
+### Success Response
+
+```json
+{
+  "message": "Success message",
+  "data": {
+    // Response data object or array
+  }
+}
+```
+
+### Error Response
+
+```json
+{
+  "message": "Error message",
+  "error": {
+    // Error details (optional)
+  },
+  "data": null
+}
+```
+
+## Pagination
+
+Endpoints that return lists support pagination with the following parameters:
+
+- `page` - Page number (default: 1)
+- `limit` - Items per page (default: 10)
+- `offset` - Skip items (alternative to page)
+
+Paginated responses include:
+
+```json
+{
+  "data": {
+    "items": [...],
+    "pagination": {
+      "current_page": 1,
+      "per_page": 10,
+      "total_data": 100,
+      "total_page": 10
+    }
+  }
+}
+```
+
+## Rate Limiting
+
+<Info>
+  The API currently does not enforce rate limits, but this may change in production environments. We recommend implementing client-side throttling for optimal performance.
+</Info>
+
+## HTTP Status Codes
+
+The API uses standard HTTP status codes:
+
+| Status Code | Description |
+|------------|-------------|
+| 200 | Success - Request completed successfully |
+| 201 | Created - Resource created successfully |
+| 400 | Bad Request - Invalid request parameters |
+| 401 | Unauthorized - Authentication required or failed |
+| 403 | Forbidden - Insufficient permissions |
+| 404 | Not Found - Resource does not exist |
+| 409 | Conflict - Resource conflict (e.g., duplicate) |
+| 500 | Internal Server Error - Server-side error |
+
+## API Versioning
+
+The current API version is **v1**, indicated in the base URL path `/api/v1`. Future versions will maintain backward compatibility or provide migration guides.
+
+## Getting Started
+
+To start using the API:
+
+1. **Authenticate** - Obtain an access token via the `/auth/login` endpoint
+2. **Include Token** - Add the token to the Authorization header in subsequent requests
+3. **Make Requests** - Call the desired endpoints with proper roles and permissions
+
+<Card
+  title="Authentication Guide"
+  icon="key"
+  href="/api/authentication"
+>
+  Learn how to authenticate and manage JWT tokens
+</Card>
+
+<Card
+  title="Error Handling"
+  icon="triangle-exclamation"
+  href="/api/errors"
+>
+  Understand error responses and common error codes
+</Card>
+
+## Next Steps
+
+Explore the API endpoints:
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="lock" href="/api/auth">
+    User login, registration, and session management
+  </Card>
+  <Card title="Products" icon="box" href="/api/products">
+    Product catalog and inventory management
+  </Card>
+  <Card title="Orders" icon="cart-shopping" href="/api/orders">
+    Order creation and management
+  </Card>
+  <Card title="Reports" icon="chart-line" href="/api/reports">
+    Sales analytics and business insights
+  </Card>
+</CardGroup>

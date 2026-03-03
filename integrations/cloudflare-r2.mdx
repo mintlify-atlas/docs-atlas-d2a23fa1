@@ -1,0 +1,277 @@
+---
+title: Cloudflare R2 Storage
+description: Setup R2 object storage for product images and file uploads
+---
+
+POS Kasir uses Cloudflare R2 for storing product images and other files. R2 is S3-compatible storage with zero egress fees.
+
+## Overview
+
+The R2 integration provides:
+- File upload with automatic URL generation
+- Public URL access via custom domain or presigned URLs
+- Automatic bucket validation
+- Support for various content types
+
+## Configuration
+
+### Creating R2 Bucket
+
+1. Log in to [Cloudflare Dashboard](https://dash.cloudflare.com/)
+2. Navigate to **R2** in the sidebar
+3. Click **Create bucket**
+4. Choose a bucket name (e.g., `pos-kasir-images`)
+5. Select a location hint closest to your users
+
+### Getting API Credentials
+
+1. In R2 dashboard, click **Manage R2 API Tokens**
+2. Click **Create API token**
+3. Choose **Object Read & Write** permissions
+4. Note your:
+   - Access Key ID
+   - Secret Access Key
+   - Account ID (from R2 overview page)
+
+### Environment Variables
+
+Add to your `.env` file:
+
+```bash
+# Cloudflare R2 Configuration
+CLOUDFLARE_R2_ACCOUNT_ID=your_account_id
+CLOUDFLARE_R2_ACCESS_KEY=your_access_key_id
+CLOUDFLARE_R2_SECRET_KEY=your_secret_access_key
+CLOUDFLARE_R2_BUCKET=pos-kasir-images
+CLOUDFLARE_R2_PUBLIC_DOMAIN=https://images.yourdomain.com
+CLOUDFLARE_R2_EXPIRY_SEC=3600
+```
+
+### Public Domain Setup (Optional)
+
+For permanent public URLs without expiration:
+
+1. In R2 bucket settings, click **Settings**
+2. Under **Public access**, click **Connect Domain**
+3. Enter your domain (e.g., `images.yourdomain.com`)
+4. Add the provided DNS records to your Cloudflare DNS
+5. Update `CLOUDFLARE_R2_PUBLIC_DOMAIN` with your domain
+
+<Warning>
+If `CLOUDFLARE_R2_PUBLIC_DOMAIN` is not set, the system generates presigned URLs that expire after `CLOUDFLARE_R2_EXPIRY_SEC` seconds. For product images that need permanent access, configure a public domain.
+</Warning>
+
+## Implementation Details
+
+The R2 client is located in `/workspace/source/pkg/cloudflare-r2/r2.go:39`.
+
+### Initialization
+
+The R2 client connects using S3-compatible API:
+
+```go
+endpoint := fmt.Sprintf("%s.r2.cloudflarestorage.com", accountID)
+
+client, err := minio.New(endpoint, &minio.Options{
+    Creds:  credentials.NewStaticV4(accessKey, secretKey, ""),
+    Secure: true,
+})
+```
+
+On initialization, the system verifies the bucket exists. If not found, a warning is logged.
+
+### Uploading Files
+
+Upload a file and receive its public URL:
+
+```go
+fileURL, err := r2Client.UploadFile(
+    ctx,
+    "products/image-123.jpg",  // object name
+    imageData,                  // file bytes
+    "image/jpeg"                // content type
+)
+```
+
+Supported content types:
+- `image/jpeg` - JPEG images
+- `image/png` - PNG images
+- `image/webp` - WebP images
+- `application/pdf` - PDF documents
+
+The function returns the file's public URL immediately after upload.
+
+### Getting File URLs
+
+Retrieve URL for an existing object:
+
+```go
+fileURL, err := r2Client.GetFileShareLink(ctx, "products/image-123.jpg")
+```
+
+**With public domain** (`CLOUDFLARE_R2_PUBLIC_DOMAIN` set):
+```
+https://images.yourdomain.com/products/image-123.jpg
+```
+
+**Without public domain** (presigned URL):
+```
+https://account-id.r2.cloudflarestorage.com/bucket/products/image-123.jpg?X-Amz-Algorithm=...
+```
+
+Presigned URLs expire after the configured expiry time.
+
+### Checking Bucket Existence
+
+```go
+exists, err := r2Client.BucketExists(ctx)
+```
+
+This is automatically called during initialization but can be used for health checks.
+
+## Usage Example
+
+### Uploading Product Image
+
+```go
+// Read image file
+imageData, err := ioutil.ReadFile("product.jpg")
+if err != nil {
+    return err
+}
+
+// Upload to R2
+objectName := fmt.Sprintf("products/%s.jpg", productID)
+imageURL, err := r2Client.UploadFile(
+    context.Background(),
+    objectName,
+    imageData,
+    "image/jpeg",
+)
+if err != nil {
+    return err
+}
+
+// Save imageURL to database
+product.ImageURL = imageURL
+```
+
+### Organizing Files
+
+Use prefixes to organize files:
+
+- `products/` - Product images
+- `receipts/` - Receipt PDFs or images
+- `logos/` - Business logos
+- `temp/` - Temporary uploads
+
+Example:
+```go
+objectName := fmt.Sprintf("products/%s/%s.jpg", categoryID, productID)
+```
+
+## Best Practices
+
+### File Naming
+
+Use consistent naming patterns:
+```go
+// Good: unique and descriptive
+fmt.Sprintf("products/%s-%s.jpg", productID, timestamp)
+
+// Avoid: generic names that may conflict
+"image.jpg"
+```
+
+### Content Type
+
+Always set correct content type for proper browser handling:
+```go
+contentTypes := map[string]string{
+    ".jpg":  "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png":  "image/png",
+    ".webp": "image/webp",
+    ".pdf":  "application/pdf",
+}
+```
+
+### Error Handling
+
+Handle common errors:
+
+```go
+fileURL, err := r2Client.UploadFile(ctx, objectName, data, contentType)
+if err != nil {
+    if strings.Contains(err.Error(), "bucket") {
+        // Bucket not found or access denied
+    }
+    if strings.Contains(err.Error(), "credentials") {
+        // Invalid credentials
+    }
+    return err
+}
+```
+
+## Troubleshooting
+
+### Bucket Not Found
+
+If you see "R2 Bucket does not exist" warning:
+
+1. Verify bucket name in `.env` matches exactly (case-sensitive)
+2. Check API token has access to the bucket
+3. Ensure bucket is in the same account as the credentials
+
+### Upload Failures
+
+Common causes:
+
+- **Invalid credentials**: Verify `CLOUDFLARE_R2_ACCESS_KEY` and `CLOUDFLARE_R2_SECRET_KEY`
+- **Insufficient permissions**: Token needs "Object Read & Write" permission
+- **Wrong account ID**: Verify `CLOUDFLARE_R2_ACCOUNT_ID` matches your R2 account
+
+### Presigned URL Expired
+
+If image URLs stop working after some time:
+
+1. URLs are temporary unless using public domain
+2. Set up `CLOUDFLARE_R2_PUBLIC_DOMAIN` for permanent URLs
+3. Or increase `CLOUDFLARE_R2_EXPIRY_SEC` (default 3600 = 1 hour)
+
+### CORS Issues
+
+If accessing images from browser fails:
+
+1. In R2 bucket settings, configure CORS:
+```json
+[
+  {
+    "AllowedOrigins": ["*"],
+    "AllowedMethods": ["GET", "HEAD"],
+    "AllowedHeaders": ["*"],
+    "MaxAgeSeconds": 3600
+  }
+]
+```
+
+## Cost Optimization
+
+R2 pricing advantages:
+- **No egress fees** - Download bandwidth is free
+- **$0.015/GB/month** - Storage cost
+- **Free tier** - 10GB storage included
+
+For a typical POS system with 1000 product images (500KB each):
+- Storage: ~500MB = ~$0.0075/month
+- Bandwidth: Unlimited downloads at no cost
+
+## API Reference
+
+The `IR2` interface provides:
+
+- `UploadFile(ctx, objectName, data, contentType)` - Upload file and get URL
+- `GetFileShareLink(ctx, objectName)` - Get URL for existing file
+- `BucketExists(ctx)` - Check if bucket is accessible
+
+See full implementation in `/workspace/source/pkg/cloudflare-r2/r2.go`.

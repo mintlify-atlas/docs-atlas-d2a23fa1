@@ -1,0 +1,504 @@
+---
+title: 'Configuration'
+description: 'Configure POS Kasir environment variables and settings'
+icon: 'gear'
+---
+
+POS Kasir uses environment variables for configuration. This guide covers all available settings and how to configure them.
+
+## Environment Files
+
+POS Kasir uses two environment files:
+
+- **`.env`** - Backend configuration (Go API)
+- **`web/.env`** - Frontend configuration (TanStack Start)
+
+<Steps>
+  <Step title="Create Environment Files">
+    Copy the example files:
+    
+    ```bash
+    cp .env.example .env
+    cp web/.env.example web/.env
+    ```
+  </Step>
+  
+  <Step title="Configure Backend">
+    Edit `.env` with your settings (see sections below)
+  </Step>
+  
+  <Step title="Configure Frontend">
+    Edit `web/.env` with your API endpoint:
+    
+    ```bash
+    VITE_API_BASE=http://localhost:8080/api/v1
+    ```
+  </Step>
+</Steps>
+
+## Backend Configuration
+
+### Server & Application
+
+Basic application settings:
+
+```bash .env
+# Environment: production or development
+APP_ENV=development
+
+# Application name
+APP_NAME=POS-Kasir
+
+# Server port
+APP_PORT=8080
+
+# Cookie domain (leave empty for localhost)
+COOKIE_DOMAIN=
+
+# Allow cross-origin requests from frontend
+WEB_FRONTEND_CROSS_ORIGIN=false
+```
+
+<ParamField path="APP_ENV" type="string" default="development">
+  Set to `production` in production environment. Affects logging and error handling.
+</ParamField>
+
+<ParamField path="APP_PORT" type="number" default="8080">
+  Port where the backend API will listen. Must match Docker port mapping if using Docker.
+</ParamField>
+
+<ParamField path="WEB_FRONTEND_CROSS_ORIGIN" type="boolean" default="false">
+  Enable if frontend is on different domain. Set to `true` in production with separate domains.
+</ParamField>
+
+### Database Configuration
+
+PostgreSQL database settings:
+
+```bash .env
+# Database host (use 'localhost' for local, service name for Docker)
+DB_HOST=localhost
+
+# Database port
+DB_PORT=5432
+
+# Database credentials
+DB_USER=postgres
+DB_PASSWORD=your_secure_password
+DB_NAME=pos_kasir
+
+# SSL mode: disable, require, verify-ca, verify-full
+DB_SSLMODE=disable
+
+# Connection pool settings
+DB_MAX_OPEN_CONNECTIONS=10
+DB_MAX_IDLE_CONNECTIONS=2
+DB_MAX_LIFETIME_MINUTES=10
+```
+
+<Warning>
+  Always use strong passwords for `DB_PASSWORD` in production environments.
+</Warning>
+
+<ParamField path="DB_HOST" type="string" required>
+  Database host. Use `localhost` for local development, or container name when using Docker.
+</ParamField>
+
+<ParamField path="DB_SSLMODE" type="string" default="disable">
+  SSL mode for database connection. Use `require` or higher in production.
+</ParamField>
+
+<ParamField path="DB_MAX_OPEN_CONNECTIONS" type="number" default="10">
+  Maximum number of open connections to database. Tune based on load.
+</ParamField>
+
+### Migration Settings
+
+Database migration configuration:
+
+```bash .env
+# Auto-run migrations on startup (not recommended for production)
+AUTO_MIGRATE=false
+
+# Path to migration files
+MIGRATIONS_PATH=./sqlc/migrations
+```
+
+<Info>
+  Keep `AUTO_MIGRATE=false` in production. Run migrations manually using `make migrate-up`.
+</Info>
+
+### Logging Configuration
+
+Configure application logging:
+
+```bash .env
+# Log level: debug, info, warn, error
+LOG_LEVEL=info
+
+# Output logs in JSON format
+LOG_JSON_FORMAT=false
+```
+
+<ParamField path="LOG_LEVEL" type="string" default="info">
+  Logging level. Use `debug` for development, `info` or `warn` for production.
+</ParamField>
+
+<ParamField path="LOG_JSON_FORMAT" type="boolean" default="false">
+  Enable JSON logging for production log aggregation systems.
+</ParamField>
+
+### JWT Authentication
+
+JSON Web Token settings for user authentication:
+
+```bash .env
+# Secret key for signing JWT tokens (use strong random string)
+JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
+
+# Token expiration in hours
+JWT_DURATION_HOURS=24
+
+# JWT issuer identifier
+JWT_ISSUER=poskasir
+```
+
+<Warning>
+  **Critical**: Generate a strong random `JWT_SECRET` for production:
+  
+  ```bash
+  openssl rand -base64 64
+  ```
+  
+  Never commit this secret to version control!
+</Warning>
+
+<ParamField path="JWT_SECRET" type="string" required>
+  Secret key for signing JWT tokens. Must be strong and unique in production.
+</ParamField>
+
+<ParamField path="JWT_DURATION_HOURS" type="number" default="24">
+  Token validity period in hours. Balance security with user experience.
+</ParamField>
+
+### Midtrans Payment Gateway
+
+Configuration for Midtrans digital payment integration:
+
+```bash .env
+# Midtrans server key (get from Midtrans dashboard)
+MIDTRANS_SERVER_KEY=your-midtrans-server-key
+
+# Use production environment (false = sandbox mode)
+MIDTRANS_IS_PROD=false
+```
+
+<Info>
+  Get your Midtrans credentials from [Midtrans Dashboard](https://dashboard.midtrans.com/):
+  
+  - **Sandbox**: For testing
+  - **Production**: For real transactions
+</Info>
+
+<ParamField path="MIDTRANS_SERVER_KEY" type="string">
+  Server key from Midtrans dashboard. Use sandbox key for testing.
+</ParamField>
+
+<ParamField path="MIDTRANS_IS_PROD" type="boolean" default="false">
+  Set to `true` only when using production credentials and real payments.
+</ParamField>
+
+<Accordion title="How to Get Midtrans Credentials">
+  1. Sign up at [Midtrans](https://midtrans.com/)
+  2. Go to **Settings** → **Access Keys**
+  3. Copy your **Server Key**
+  4. Start with **Sandbox** mode for testing
+  5. Switch to **Production** when ready for real payments
+</Accordion>
+
+### Cloudflare R2 Storage
+
+Configuration for cloud object storage (for product images):
+
+```bash .env
+# Cloudflare account ID
+R2_ACCOUNT_ID=your-cloudflare-account-id
+
+# R2 access credentials
+R2_ACCESS_KEY=your-r2-access-key
+R2_SECRET_KEY=your-r2-secret-key
+
+# R2 bucket name
+R2_BUCKET=pos-kasir
+
+# Public domain for accessing images
+R2_PUBLIC_DOMAIN=https://your-bucket.r2.dev
+
+# Presigned URL expiry in seconds
+R2_EXPIRY_SECONDS=3600
+```
+
+<Info>
+  Cloudflare R2 provides S3-compatible object storage. Get credentials from [Cloudflare Dashboard](https://dash.cloudflare.com/).
+</Info>
+
+<ParamField path="R2_ACCOUNT_ID" type="string">
+  Your Cloudflare account ID from the dashboard.
+</ParamField>
+
+<ParamField path="R2_BUCKET" type="string" default="pos-kasir">
+  Name of your R2 bucket. Create it in Cloudflare dashboard first.
+</ParamField>
+
+<ParamField path="R2_PUBLIC_DOMAIN" type="string">
+  Public URL for accessing uploaded images. Configure in R2 bucket settings.
+</ParamField>
+
+<Accordion title="Setting Up Cloudflare R2">
+  1. Log in to [Cloudflare Dashboard](https://dash.cloudflare.com/)
+  2. Go to **R2** → **Create Bucket**
+  3. Name your bucket (e.g., `pos-kasir`)
+  4. Go to **Settings** → **R2 API Tokens**
+  5. Create an API token with edit permissions
+  6. Copy your **Access Key** and **Secret Key**
+  7. Configure public access or custom domain for `R2_PUBLIC_DOMAIN`
+</Accordion>
+
+## Frontend Configuration
+
+The frontend requires minimal configuration:
+
+```bash web/.env
+# Backend API base URL
+VITE_API_BASE=http://localhost:8080/api/v1
+```
+
+<ParamField path="VITE_API_BASE" type="string" required>
+  Full URL to the backend API. Include the `/api/v1` path.
+</ParamField>
+
+### Environment-Specific URLs
+
+<CodeGroup>
+```bash Local Development
+VITE_API_BASE=http://localhost:8080/api/v1
+```
+
+```bash Production
+VITE_API_BASE=https://api.yourdomain.com/api/v1
+```
+
+```bash Docker Network
+VITE_API_BASE=http://backend:8080/api/v1
+```
+</CodeGroup>
+
+## Complete Configuration Example
+
+<Accordion title="Full .env Example for Development">
+  ```bash
+  # ==============================================
+  # Server & Application Config
+  # ==============================================
+  APP_ENV=development
+  APP_NAME=POS-Kasir
+  APP_PORT=8080
+  COOKIE_DOMAIN=
+  WEB_FRONTEND_CROSS_ORIGIN=false
+  
+  # ==============================================
+  # Database (PostgreSQL)
+  # ==============================================
+  DB_HOST=localhost
+  DB_PORT=5432
+  DB_USER=postgres
+  DB_PASSWORD=postgres
+  DB_NAME=pos_kasir
+  DB_SSLMODE=disable
+  
+  DB_MAX_OPEN_CONNECTIONS=10
+  DB_MAX_IDLE_CONNECTIONS=2
+  DB_MAX_LIFETIME_MINUTES=10
+  
+  # ==============================================
+  # Migration
+  # ==============================================
+  AUTO_MIGRATE=false
+  MIGRATIONS_PATH=./sqlc/migrations
+  
+  # ==============================================
+  # Logger
+  # ==============================================
+  LOG_LEVEL=info
+  LOG_JSON_FORMAT=false
+  
+  # ==============================================
+  # JWT (Authentication)
+  # ==============================================
+  JWT_SECRET=dev-secret-change-in-production
+  JWT_DURATION_HOURS=24
+  JWT_ISSUER=poskasir
+  
+  # ==============================================
+  # Midtrans (Payment Gateway)
+  # ==============================================
+  MIDTRANS_SERVER_KEY=SB-Mid-server-your-sandbox-key
+  MIDTRANS_IS_PROD=false
+  
+  # ==============================================
+  # Cloudflare R2 (Object Storage)
+  # ==============================================
+  R2_ACCOUNT_ID=your-account-id
+  R2_ACCESS_KEY=your-access-key
+  R2_SECRET_KEY=your-secret-key
+  R2_BUCKET=pos-kasir
+  R2_PUBLIC_DOMAIN=https://pos-kasir.r2.dev
+  R2_EXPIRY_SECONDS=3600
+  ```
+</Accordion>
+
+<Accordion title="Full .env Example for Production">
+  ```bash
+  # ==============================================
+  # Server & Application Config
+  # ==============================================
+  APP_ENV=production
+  APP_NAME=POS-Kasir
+  APP_PORT=8080
+  COOKIE_DOMAIN=.yourdomain.com
+  WEB_FRONTEND_CROSS_ORIGIN=true
+  
+  # ==============================================
+  # Database (PostgreSQL)
+  # ==============================================
+  DB_HOST=your-database-host.com
+  DB_PORT=5432
+  DB_USER=pos_user
+  DB_PASSWORD=strong-random-password-here
+  DB_NAME=pos_kasir_prod
+  DB_SSLMODE=require
+  
+  DB_MAX_OPEN_CONNECTIONS=25
+  DB_MAX_IDLE_CONNECTIONS=5
+  DB_MAX_LIFETIME_MINUTES=15
+  
+  # ==============================================
+  # Migration
+  # ==============================================
+  AUTO_MIGRATE=false
+  MIGRATIONS_PATH=./sqlc/migrations
+  
+  # ==============================================
+  # Logger
+  # ==============================================
+  LOG_LEVEL=warn
+  LOG_JSON_FORMAT=true
+  
+  # ==============================================
+  # JWT (Authentication)
+  # ==============================================
+  JWT_SECRET=use-openssl-rand-base64-64-to-generate-this
+  JWT_DURATION_HOURS=24
+  JWT_ISSUER=poskasir
+  
+  # ==============================================
+  # Midtrans (Payment Gateway)
+  # ==============================================
+  MIDTRANS_SERVER_KEY=Mid-server-your-production-key
+  MIDTRANS_IS_PROD=true
+  
+  # ==============================================
+  # Cloudflare R2 (Object Storage)
+  # ==============================================
+  R2_ACCOUNT_ID=your-production-account-id
+  R2_ACCESS_KEY=your-production-access-key
+  R2_SECRET_KEY=your-production-secret-key
+  R2_BUCKET=pos-kasir-prod
+  R2_PUBLIC_DOMAIN=https://cdn.yourdomain.com
+  R2_EXPIRY_SECONDS=3600
+  ```
+</Accordion>
+
+## Security Best Practices
+
+<Warning>
+  Follow these security practices for production deployments:
+</Warning>
+
+<AccordionGroup>
+  <Accordion title="Secure Secrets">
+    - Never commit `.env` files to version control
+    - Add `.env` to `.gitignore`
+    - Use environment-specific secrets
+    - Rotate secrets regularly
+    - Use strong random strings for `JWT_SECRET`
+  </Accordion>
+  
+  <Accordion title="Database Security">
+    - Use strong passwords for `DB_PASSWORD`
+    - Enable SSL with `DB_SSLMODE=require` in production
+    - Limit database user permissions
+    - Use separate databases for dev/staging/production
+    - Regularly backup your database
+  </Accordion>
+  
+  <Accordion title="Application Security">
+    - Set `APP_ENV=production` in production
+    - Enable `WEB_FRONTEND_CROSS_ORIGIN` only if needed
+    - Set appropriate `COOKIE_DOMAIN`
+    - Keep `JWT_DURATION_HOURS` reasonable (24-48 hours)
+    - Use `LOG_LEVEL=warn` or `error` in production
+  </Accordion>
+  
+  <Accordion title="External Services">
+    - Keep Midtrans in sandbox mode until ready
+    - Restrict R2 bucket access appropriately
+    - Use separate credentials for production
+    - Monitor API usage and costs
+  </Accordion>
+</AccordionGroup>
+
+## Verification
+
+After configuration, verify your settings:
+
+<Steps>
+  <Step title="Test Database Connection">
+    ```bash
+    make migrate-version
+    ```
+    
+    Should display current migration version without errors.
+  </Step>
+  
+  <Step title="Check Application Startup">
+    ```bash
+    docker-compose up -d
+    docker-compose logs backend
+    ```
+    
+    Look for successful startup messages and no connection errors.
+  </Step>
+  
+  <Step title="Test API Health">
+    ```bash
+    curl http://localhost:8080/api/v1/health
+    ```
+  </Step>
+  
+  <Step title="Verify Frontend Connection">
+    Open browser to `http://localhost:3000` and check browser console for API connection.
+  </Step>
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="First Steps" icon="book" href="/getting-started/first-steps">
+    Learn how to use POS Kasir after configuration
+  </Card>
+  
+  <Card title="API Reference" icon="code" href="/api/introduction">
+    Explore the API documentation
+  </Card>
+</CardGroup>

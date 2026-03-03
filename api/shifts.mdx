@@ -1,0 +1,237 @@
+---
+title: 'Shift Management'
+description: 'Manage cashier shifts and cash transactions'
+---
+
+## Start Shift
+
+<CodeGroup>
+```bash POST /shifts/start
+curl -X POST "http://localhost:8080/api/v1/shifts/start" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "start_cash": 100000,
+    "password": "your_password"
+  }'
+```
+</CodeGroup>
+
+Create a new shift session for the authenticated user. Each user can only have one active shift at a time.
+
+### Request Body
+
+<ParamField body="start_cash" type="integer" required>
+  Starting cash amount in the register (minimum 0)
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  User password for verification
+</ParamField>
+
+### Response
+
+<ResponseField name="data" type="object">
+  <Expandable title="ShiftResponse">
+    <ResponseField name="id" type="string" required>
+      Shift UUID
+    </ResponseField>
+    
+    <ResponseField name="user_id" type="string" required>
+      User UUID who started the shift
+    </ResponseField>
+    
+    <ResponseField name="start_time" type="string" required>
+      Timestamp when shift was started
+    </ResponseField>
+    
+    <ResponseField name="end_time" type="string">
+      Timestamp when shift was ended (null if still open)
+    </ResponseField>
+    
+    <ResponseField name="start_cash" type="integer" required>
+      Starting cash amount
+    </ResponseField>
+    
+    <ResponseField name="expected_cash_end" type="integer">
+      Expected cash at end of shift (calculated)
+    </ResponseField>
+    
+    <ResponseField name="actual_cash_end" type="integer">
+      Actual cash counted at end of shift
+    </ResponseField>
+    
+    <ResponseField name="difference" type="integer">
+      Difference between actual and expected (actual - expected)
+    </ResponseField>
+    
+    <ResponseField name="status" type="string" required>
+      Shift status: `open` or `closed`
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Roles
+
+Accessible by: `admin`, `manager`, `cashier`
+
+---
+
+## End Shift
+
+<CodeGroup>
+```bash POST /shifts/end
+curl -X POST "http://localhost:8080/api/v1/shifts/end" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "actual_cash_end": 250000,
+    "password": "your_password"
+  }'
+```
+</CodeGroup>
+
+Close the active shift session for the authenticated user.
+
+### Request Body
+
+<ParamField body="actual_cash_end" type="integer" required>
+  Actual cash amount counted at end of shift (minimum 0)
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  User password for verification
+</ParamField>
+
+### Response
+
+Returns a `ShiftResponse` object with the completed shift details including the calculated difference between expected and actual cash.
+
+### Roles
+
+Accessible by: `admin`, `manager`, `cashier`
+
+---
+
+## Get Current Shift
+
+<CodeGroup>
+```bash GET /shifts/current
+curl -X GET "http://localhost:8080/api/v1/shifts/current" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+</CodeGroup>
+
+Check for and retrieve the details of an active shift session for the authenticated user.
+
+### Response
+
+Returns a `ShiftResponse` object if an open shift exists, or 404 error if no open shift is found.
+
+### Roles
+
+Accessible by: `admin`, `manager`, `cashier`
+
+---
+
+## Create Cash Transaction
+
+<CodeGroup>
+```bash POST /shifts/cash-transaction
+curl -X POST "http://localhost:8080/api/v1/shifts/cash-transaction" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "amount": 50000,
+    "type": "cash_in",
+    "category": "Cash Drop",
+    "description": "Midday cash drop to safe"
+  }'
+```
+</CodeGroup>
+
+Record a manual cash entry or exit within the active shift (e.g., cash drops, expenses, additional cash in).
+
+### Request Body
+
+<ParamField body="amount" type="integer" required>
+  Transaction amount (minimum 1)
+</ParamField>
+
+<ParamField body="type" type="string" required>
+  Transaction type:
+  - `cash_in` - Cash added to register
+  - `cash_out` - Cash removed from register
+</ParamField>
+
+<ParamField body="category" type="string" required>
+  Transaction category (e.g., "Cash Drop", "Expense", "Change")
+</ParamField>
+
+<ParamField body="description" type="string">
+  Optional description of the transaction
+</ParamField>
+
+### Response
+
+<ResponseField name="data" type="object">
+  <Expandable title="CashTransactionResponse">
+    <ResponseField name="id" type="string" required>
+      Transaction UUID
+    </ResponseField>
+    
+    <ResponseField name="shift_id" type="string" required>
+      Associated shift UUID
+    </ResponseField>
+    
+    <ResponseField name="user_id" type="string" required>
+      User UUID who created the transaction
+    </ResponseField>
+    
+    <ResponseField name="amount" type="integer" required>
+      Transaction amount
+    </ResponseField>
+    
+    <ResponseField name="type" type="string" required>
+      Transaction type: `cash_in` or `cash_out`
+    </ResponseField>
+    
+    <ResponseField name="category" type="string" required>
+      Transaction category
+    </ResponseField>
+    
+    <ResponseField name="description" type="string">
+      Optional transaction description
+    </ResponseField>
+    
+    <ResponseField name="created_at" type="string" required>
+      Timestamp when transaction was created
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Response Example
+
+```json
+{
+  "message": "Cash transaction created successfully",
+  "data": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "shift_id": "660e8400-e29b-41d4-a716-446655440001",
+    "user_id": "770e8400-e29b-41d4-a716-446655440002",
+    "amount": 50000,
+    "type": "cash_out",
+    "category": "Cash Drop",
+    "description": "Midday cash drop to safe",
+    "created_at": "2024-01-15T14:30:00Z"
+  }
+}
+```
+
+### Roles
+
+Accessible by: `admin`, `manager`, `cashier`
+
+<Note>
+You must have an active shift open to create cash transactions. Cash transactions affect the expected cash balance at the end of the shift.
+</Note>

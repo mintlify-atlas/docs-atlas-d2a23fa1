@@ -1,0 +1,372 @@
+---
+title: 'Transactions'
+description: 'Cash transaction and shift management endpoints'
+---
+
+## Overview
+
+Transactions in POS Kasir are managed through two main systems:
+1. **Order Transactions** - Handled via the Orders API (see Orders documentation)
+2. **Cash Transactions** - Cash-in and cash-out operations during shifts
+
+This page documents the cash transaction endpoints for managing money flow during shifts.
+
+---
+
+## Create Cash Transaction
+
+<CodeBlock title="POST /api/v1/shifts/cash-transaction">
+Create a cash in/out transaction during an active shift.
+
+**Authentication Required:** Yes
+
+**Roles:** `admin`, `manager`, `cashier`
+</CodeBlock>
+
+### Request Body
+
+<ParamField body="type" type="string" required>
+  Transaction type: `cash_in` or `cash_out`
+</ParamField>
+
+<ParamField body="amount" type="integer" required>
+  Transaction amount (minimum 1)
+</ParamField>
+
+<ParamField body="category" type="string" required>
+  Transaction category (e.g., "expense", "drop", "refund")
+</ParamField>
+
+<ParamField body="description" type="string">
+  Transaction description/notes
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  <ResponseField name="id" type="string">
+    Transaction ID (UUID)
+  </ResponseField>
+  
+  <ResponseField name="shift_id" type="string">
+    Associated shift ID
+  </ResponseField>
+  
+  <ResponseField name="type" type="string">
+    Transaction type
+  </ResponseField>
+  
+  <ResponseField name="amount" type="integer">
+    Transaction amount
+  </ResponseField>
+  
+  <ResponseField name="category" type="string">
+    Transaction category
+  </ResponseField>
+  
+  <ResponseField name="description" type="string">
+    Transaction description
+  </ResponseField>
+  
+  <ResponseField name="user_id" type="string">
+    User who created the transaction
+  </ResponseField>
+  
+  <ResponseField name="created_at" type="string">
+    Creation timestamp
+  </ResponseField>
+</ResponseField>
+
+### Example - Cash Out (Expense)
+
+```bash
+curl -X POST https://localhost:8080/api/v1/shifts/cash-transaction \
+  -H "Content-Type: application/json" \
+  -H "Cookie: access_token=YOUR_TOKEN" \
+  -d '{
+    "type": "cash_out",
+    "amount": 50000,
+    "category": "expense",
+    "description": "Office supplies purchase"
+  }'
+```
+
+<ResponseExample>
+```json
+{
+  "message": "Cash transaction created successfully",
+  "data": {
+    "id": "111e4567-e89b-12d3-a456-426614174100",
+    "shift_id": "222e4567-e89b-12d3-a456-426614174200",
+    "type": "cash_out",
+    "amount": 50000,
+    "category": "expense",
+    "description": "Office supplies purchase",
+    "user_id": "550e8400-e29b-41d4-a716-446655440000",
+    "created_at": "2024-03-03T14:30:00Z"
+  }
+}
+```
+</ResponseExample>
+
+### Example - Cash In (Drop)
+
+```bash
+curl -X POST https://localhost:8080/api/v1/shifts/cash-transaction \
+  -H "Content-Type: application/json" \
+  -H "Cookie: access_token=YOUR_TOKEN" \
+  -d '{
+    "type": "cash_in",
+    "amount": 200000,
+    "category": "drop",
+    "description": "Cash drop to safe"
+  }'
+```
+
+---
+
+## Start Shift
+
+<CodeBlock title="POST /api/v1/shifts/start">
+Start a new shift with opening cash balance.
+
+**Authentication Required:** Yes
+
+**Roles:** `admin`, `manager`, `cashier`
+</CodeBlock>
+
+### Request Body
+
+<ParamField body="start_cash" type="integer" required>
+  Starting cash amount (minimum 0)
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  User password for verification
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  <ResponseField name="id" type="string">
+    Shift ID
+  </ResponseField>
+  
+  <ResponseField name="user_id" type="string">
+    User ID
+  </ResponseField>
+  
+  <ResponseField name="start_cash" type="integer">
+    Starting cash amount
+  </ResponseField>
+  
+  <ResponseField name="status" type="string">
+    Shift status: `open`
+  </ResponseField>
+  
+  <ResponseField name="start_time" type="string">
+    Shift start timestamp
+  </ResponseField>
+</ResponseField>
+
+### Example
+
+```bash
+curl -X POST https://localhost:8080/api/v1/shifts/start \
+  -H "Content-Type: application/json" \
+  -H "Cookie: access_token=YOUR_TOKEN" \
+  -d '{
+    "start_cash": 500000,
+    "password": "userpassword123"
+  }'
+```
+
+<ResponseExample>
+```json
+{
+  "message": "Shift started successfully",
+  "data": {
+    "id": "222e4567-e89b-12d3-a456-426614174200",
+    "user_id": "550e8400-e29b-41d4-a716-446655440000",
+    "start_cash": 500000,
+    "status": "open",
+    "start_time": "2024-03-03T08:00:00Z"
+  }
+}
+```
+</ResponseExample>
+
+---
+
+## End Shift
+
+<CodeBlock title="POST /api/v1/shifts/end">
+End the current shift and record closing cash balance.
+
+**Authentication Required:** Yes
+
+**Roles:** `admin`, `manager`, `cashier`
+</CodeBlock>
+
+### Request Body
+
+<ParamField body="password" type="string" required>
+  User password for verification
+</ParamField>
+
+<ParamField body="actual_cash_end" type="integer">
+  Actual cash counted at shift end (minimum 0)
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  <ResponseField name="id" type="string">
+    Shift ID
+  </ResponseField>
+  
+  <ResponseField name="user_id" type="string">
+    User ID
+  </ResponseField>
+  
+  <ResponseField name="start_cash" type="integer">
+    Starting cash amount
+  </ResponseField>
+  
+  <ResponseField name="expected_cash_end" type="integer">
+    Expected ending cash (calculated)
+  </ResponseField>
+  
+  <ResponseField name="actual_cash_end" type="integer">
+    Actual ending cash (counted)
+  </ResponseField>
+  
+  <ResponseField name="difference" type="integer">
+    Difference (actual - expected)
+  </ResponseField>
+  
+  <ResponseField name="status" type="string">
+    Shift status: `closed`
+  </ResponseField>
+  
+  <ResponseField name="start_time" type="string">
+    Shift start timestamp
+  </ResponseField>
+  
+  <ResponseField name="end_time" type="string">
+    Shift end timestamp
+  </ResponseField>
+</ResponseField>
+
+### Example
+
+```bash
+curl -X POST https://localhost:8080/api/v1/shifts/end \
+  -H "Content-Type: application/json" \
+  -H "Cookie: access_token=YOUR_TOKEN" \
+  -d '{
+    "password": "userpassword123",
+    "actual_cash_end": 1450000
+  }'
+```
+
+<ResponseExample>
+```json
+{
+  "message": "Shift ended successfully",
+  "data": {
+    "id": "222e4567-e89b-12d3-a456-426614174200",
+    "user_id": "550e8400-e29b-41d4-a716-446655440000",
+    "start_cash": 500000,
+    "expected_cash_end": 1475000,
+    "actual_cash_end": 1450000,
+    "difference": -25000,
+    "status": "closed",
+    "start_time": "2024-03-03T08:00:00Z",
+    "end_time": "2024-03-03T18:00:00Z"
+  }
+}
+```
+</ResponseExample>
+
+---
+
+## Get Active Shift
+
+<CodeBlock title="GET /api/v1/shifts/active">
+Get information about the currently active shift for the authenticated user.
+
+**Authentication Required:** Yes
+
+**Roles:** `admin`, `manager`, `cashier`
+</CodeBlock>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Active shift information (null if no active shift)
+</ResponseField>
+
+### Example
+
+```bash
+curl -X GET https://localhost:8080/api/v1/shifts/active \
+  -H "Cookie: access_token=YOUR_TOKEN"
+```
+
+<ResponseExample>
+```json
+{
+  "message": "Active shift retrieved successfully",
+  "data": {
+    "id": "222e4567-e89b-12d3-a456-426614174200",
+    "user_id": "550e8400-e29b-41d4-a716-446655440000",
+    "start_cash": 500000,
+    "status": "open",
+    "start_time": "2024-03-03T08:00:00Z"
+  }
+}
+```
+</ResponseExample>
+
+---
+
+## Transaction Types
+
+### Cash Out Types
+- **expense** - General business expenses (supplies, utilities, etc.)
+- **drop** - Cash removed from register for safekeeping
+- **refund** - Customer refund
+- **other** - Other cash outflows
+
+### Cash In Types
+- **opening** - Opening cash balance
+- **deposit** - Cash added to register
+- **other** - Other cash inflows
+
+---
+
+## Order Payment Transactions
+
+For order payment transactions, please refer to the [Orders API documentation](/api/orders). Order payments are automatically tracked and included in shift calculations.
+
+### Related Endpoints
+- `POST /api/v1/orders/{id}/pay/manual` - Process cash/card payment
+- `POST /api/v1/orders/{id}/pay/midtrans` - Process QRIS/e-wallet payment
+- `GET /api/v1/payment-methods` - Get available payment methods

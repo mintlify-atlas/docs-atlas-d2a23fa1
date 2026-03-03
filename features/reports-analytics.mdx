@@ -1,0 +1,776 @@
+---
+title: Reports & Analytics
+description: Dashboard summaries, sales reports, product performance, payment analytics, and cashier performance tracking
+---
+
+## Overview
+
+POS Kasir provides comprehensive reporting and analytics capabilities for business insights. The reporting system includes dashboard summaries, sales trends, product performance, payment method analytics, cashier performance, and cancellation tracking.
+
+## Dashboard Summary
+
+### Get Dashboard Summary
+
+Retrieve high-level overview metrics for the dashboard.
+
+**Endpoint:** `GET /reports/dashboard-summary`
+
+**Required Role:** Admin, Manager, Cashier
+
+```go title="internal/report/handler.go:304-328"
+func (r *RptHandler) GetDashboardSummaryHandler(c fiber.Ctx) error {
+    summary, err := r.Service.GetDashboardSummary(c.RequestCtx())
+    if err != nil {
+        r.log.Error("Failed to get dashboard summary", "error", err)
+        return c.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+            Message: "Failed to get dashboard summary",
+        })
+    }
+
+    return c.Status(fiber.StatusOK).JSON(common.SuccessResponse{
+        Message: "Dashboard summary retrieved successfully",
+        Data:    summary,
+    })
+}
+```
+
+**Response:**
+```json
+{
+  "message": "Dashboard summary retrieved successfully",
+  "data": {
+    "total_revenue": 15000000,
+    "total_orders": 250,
+    "total_products": 45,
+    "total_customers": 180,
+    "today_revenue": 850000,
+    "today_orders": 32,
+    "pending_orders": 5,
+    "low_stock_products": 8
+  }
+}
+```
+
+## Sales Reports
+
+### Get Sales Reports
+
+Retrieve aggregated sales data grouped by date within a specified range.
+
+**Endpoint:** `GET /reports/sales`
+
+**Required Role:** Admin, Manager, Cashier
+
+```go title="internal/report/handler.go:29-82"
+func (r *RptHandler) GetSalesReportsHandler(c fiber.Ctx) error {
+    var req SalesReportRequest
+    if err := c.Bind().Query(&req); err != nil {
+        r.log.Warnf("Get sales reports validation failed", "error", err)
+        var ve *validator.ValidationErrors
+        if errors.As(err, &ve) {
+            return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+                Message: "Validation failed",
+                Error:   ve.Error(),
+                Data: map[string]interface{}{
+                    "errors": ve.Errors,
+                },
+            })
+        }
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid query parameters",
+            Error:   err.Error(),
+        })
+    }
+
+    startDate, _ := time.Parse("2006-01-02", req.StartDate)
+    endDate, _ := time.Parse("2006-01-02", req.EndDate)
+
+    serviceReq := &SalesReportServiceRequest{
+        StartDate: startDate,
+        EndDate:   endDate,
+    }
+
+    salesReports, err := r.Service.GetSalesReports(c.RequestCtx(), serviceReq)
+    if err != nil {
+        r.log.Error("Failed to get sales reports", "error", err)
+        return c.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+            Message: "Failed to get sales reports",
+        })
+    }
+
+    return c.Status(fiber.StatusOK).JSON(common.SuccessResponse{
+        Message: "Sales reports retrieved successfully",
+        Data:    salesReports,
+    })
+}
+```
+
+**Query Parameters:**
+- `start_date` - Start date (YYYY-MM-DD) - **Required**
+- `end_date` - End date (YYYY-MM-DD) - **Required**
+
+**Example Request:**
+```
+GET /reports/sales?start_date=2024-03-01&end_date=2024-03-31
+```
+
+**Response:**
+```json
+{
+  "message": "Sales reports retrieved successfully",
+  "data": [
+    {
+      "date": "2024-03-01",
+      "total_orders": 45,
+      "total_revenue": 2250000,
+      "total_discount": 125000,
+      "net_revenue": 2125000,
+      "cancelled_orders": 3,
+      "average_order_value": 47222
+    },
+    {
+      "date": "2024-03-02",
+      "total_orders": 52,
+      "total_revenue": 2600000,
+      "total_discount": 150000,
+      "net_revenue": 2450000,
+      "cancelled_orders": 2,
+      "average_order_value": 47115
+    }
+  ]
+}
+```
+
+## Product Performance
+
+### Get Product Performance
+
+Analyze sales performance for each product.
+
+**Endpoint:** `GET /reports/products`
+
+**Required Role:** Admin, Manager, Cashier
+
+```go title="internal/report/handler.go:84-137"
+func (r *RptHandler) GetProductPerformanceHandler(c fiber.Ctx) error {
+    var req SalesReportRequest
+    if err := c.Bind().Query(&req); err != nil {
+        r.log.Warnf("Get product performance validation failed", "error", err)
+        var ve *validator.ValidationErrors
+        if errors.As(err, &ve) {
+            return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+                Message: "Validation failed",
+                Error:   ve.Error(),
+                Data: map[string]interface{}{
+                    "errors": ve.Errors,
+                },
+            })
+        }
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid query parameters",
+            Error:   err.Error(),
+        })
+    }
+
+    startDate, _ := time.Parse("2006-01-02", req.StartDate)
+    endDate, _ := time.Parse("2006-01-02", req.EndDate)
+
+    serviceReq := &SalesReportServiceRequest{
+        StartDate: startDate,
+        EndDate:   endDate,
+    }
+
+    results, err := r.Service.GetProductPerformance(c.RequestCtx(), serviceReq)
+    if err != nil {
+        r.log.Error("Failed to get product performance", "error", err)
+        return c.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+            Message: "Failed to get product performance",
+        })
+    }
+
+    return c.Status(fiber.StatusOK).JSON(common.SuccessResponse{
+        Message: "Product performance retrieved successfully",
+        Data:    results,
+    })
+}
+```
+
+**Example Request:**
+```
+GET /reports/products?start_date=2024-03-01&end_date=2024-03-31
+```
+
+**Response:**
+```json
+{
+  "message": "Product performance retrieved successfully",
+  "data": [
+    {
+      "product_id": "550e8400-e29b-41d4-a716-446655440000",
+      "product_name": "Espresso",
+      "category_name": "Coffee",
+      "total_quantity_sold": 320,
+      "total_revenue": 8000000,
+      "total_orders": 180,
+      "average_price": 25000,
+      "rank": 1
+    },
+    {
+      "product_id": "770e8400-e29b-41d4-a716-446655440002",
+      "product_name": "Cappuccino",
+      "category_name": "Coffee",
+      "total_quantity_sold": 245,
+      "total_revenue": 7350000,
+      "total_orders": 165,
+      "average_price": 30000,
+      "rank": 2
+    }
+  ]
+}
+```
+
+## Payment Method Performance
+
+### Get Payment Method Analytics
+
+Analyze usage and revenue by payment method.
+
+**Endpoint:** `GET /reports/payment-methods`
+
+**Required Role:** Admin, Manager, Cashier
+
+```go title="internal/report/handler.go:139-192"
+func (r *RptHandler) GetPaymentMethodPerformanceHandler(c fiber.Ctx) error {
+    var req SalesReportRequest
+    if err := c.Bind().Query(&req); err != nil {
+        r.log.Warnf("Get payment method performance validation failed", "error", err)
+        var ve *validator.ValidationErrors
+        if errors.As(err, &ve) {
+            return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+                Message: "Validation failed",
+                Error:   ve.Error(),
+                Data: map[string]interface{}{
+                    "errors": ve.Errors,
+                },
+            })
+        }
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid query parameters",
+            Error:   err.Error(),
+        })
+    }
+
+    startDate, _ := time.Parse("2006-01-02", req.StartDate)
+    endDate, _ := time.Parse("2006-01-02", req.EndDate)
+
+    serviceReq := &SalesReportServiceRequest{
+        StartDate: startDate,
+        EndDate:   endDate,
+    }
+
+    results, err := r.Service.GetPaymentMethodPerformance(c.RequestCtx(), serviceReq)
+    if err != nil {
+        r.log.Error("Failed to get payment method performance", "error", err)
+        return c.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+            Message: "Failed to get payment method performance",
+        })
+    }
+
+    return c.Status(fiber.StatusOK).JSON(common.SuccessResponse{
+        Message: "Payment method performance retrieved successfully",
+        Data:    results,
+    })
+}
+```
+
+**Example Request:**
+```
+GET /reports/payment-methods?start_date=2024-03-01&end_date=2024-03-31
+```
+
+**Response:**
+```json
+{
+  "message": "Payment method performance retrieved successfully",
+  "data": [
+    {
+      "payment_method_id": 1,
+      "payment_method_name": "Cash",
+      "total_transactions": 180,
+      "total_revenue": 9500000,
+      "percentage": 63.33,
+      "average_transaction_value": 52777
+    },
+    {
+      "payment_method_id": 2,
+      "payment_method_name": "QRIS",
+      "total_transactions": 85,
+      "total_revenue": 4250000,
+      "percentage": 28.33,
+      "average_transaction_value": 50000
+    },
+    {
+      "payment_method_id": 3,
+      "payment_method_name": "GoPay",
+      "total_transactions": 25,
+      "total_revenue": 1250000,
+      "percentage": 8.33,
+      "average_transaction_value": 50000
+    }
+  ]
+}
+```
+
+## Cashier Performance
+
+### Get Cashier Performance Report
+
+Track individual cashier sales and order counts.
+
+**Endpoint:** `GET /reports/cashier-performance`
+
+**Required Role:** Admin, Manager, Cashier
+
+```go title="internal/report/handler.go:194-247"
+func (r *RptHandler) GetCashierPerformanceHandler(c fiber.Ctx) error {
+    var req SalesReportRequest
+    if err := c.Bind().Query(&req); err != nil {
+        r.log.Warnf("Get cashier performance validation failed", "error", err)
+        var ve *validator.ValidationErrors
+        if errors.As(err, &ve) {
+            return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+                Message: "Validation failed",
+                Error:   ve.Error(),
+                Data: map[string]interface{}{
+                    "errors": ve.Errors,
+                },
+            })
+        }
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid query parameters",
+            Error:   err.Error(),
+        })
+    }
+
+    startDate, _ := time.Parse("2006-01-02", req.StartDate)
+    endDate, _ := time.Parse("2006-01-02", req.EndDate)
+
+    serviceReq := &SalesReportServiceRequest{
+        StartDate: startDate,
+        EndDate:   endDate,
+    }
+
+    results, err := r.Service.GetCashierPerformance(c.RequestCtx(), serviceReq)
+    if err != nil {
+        r.log.Error("Failed to get cashier performance", "error", err)
+        return c.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+            Message: "Failed to get cashier performance",
+        })
+    }
+
+    return c.Status(fiber.StatusOK).JSON(common.SuccessResponse{
+        Message: "Cashier performance retrieved successfully",
+        Data:    results,
+    })
+}
+```
+
+**Example Request:**
+```
+GET /reports/cashier-performance?start_date=2024-03-01&end_date=2024-03-31
+```
+
+**Response:**
+```json
+{
+  "message": "Cashier performance retrieved successfully",
+  "data": [
+    {
+      "user_id": "550e8400-e29b-41d4-a716-446655440000",
+      "username": "john_cashier",
+      "email": "john@example.com",
+      "total_orders": 125,
+      "total_revenue": 6250000,
+      "cancelled_orders": 5,
+      "average_order_value": 50000,
+      "total_discounts_applied": 312500,
+      "rank": 1
+    },
+    {
+      "user_id": "660e8400-e29b-41d4-a716-446655440001",
+      "username": "jane_cashier",
+      "email": "jane@example.com",
+      "total_orders": 105,
+      "total_revenue": 5250000,
+      "cancelled_orders": 3,
+      "average_order_value": 50000,
+      "total_discounts_applied": 262500,
+      "rank": 2
+    }
+  ]
+}
+```
+
+## Cancellation Reports
+
+### Get Cancellation Analytics
+
+Analyze order cancellations grouped by reason.
+
+**Endpoint:** `GET /reports/cancellations`
+
+**Required Role:** Admin, Manager, Cashier
+
+```go title="internal/report/handler.go:249-302"
+func (r *RptHandler) GetCancellationReportsHandler(c fiber.Ctx) error {
+    var req SalesReportRequest
+    if err := c.Bind().Query(&req); err != nil {
+        r.log.Warnf("Get cancellation reports validation failed", "error", err)
+        var ve *validator.ValidationErrors
+        if errors.As(err, &ve) {
+            return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+                Message: "Validation failed",
+                Error:   ve.Error(),
+                Data: map[string]interface{}{
+                    "errors": ve.Errors,
+                },
+            })
+        }
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid query parameters",
+            Error:   err.Error(),
+        })
+    }
+
+    startDate, _ := time.Parse("2006-01-02", req.StartDate)
+    endDate, _ := time.Parse("2006-01-02", req.EndDate)
+
+    serviceReq := &SalesReportServiceRequest{
+        StartDate: startDate,
+        EndDate:   endDate,
+    }
+
+    results, err := r.Service.GetCancellationReports(c.RequestCtx(), serviceReq)
+    if err != nil {
+        r.log.Error("Failed to get cancellation reports", "error", err)
+        return c.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+            Message: "Failed to get cancellation reports",
+        })
+    }
+
+    return c.Status(fiber.StatusOK).JSON(common.SuccessResponse{
+        Message: "Cancellation reports retrieved successfully",
+        Data:    results,
+    })
+}
+```
+
+**Example Request:**
+```
+GET /reports/cancellations?start_date=2024-03-01&end_date=2024-03-31
+```
+
+**Response:**
+```json
+{
+  "message": "Cancellation reports retrieved successfully",
+  "data": [
+    {
+      "cancellation_reason_id": 1,
+      "reason": "Customer changed mind",
+      "total_cancellations": 15,
+      "total_value": 750000,
+      "percentage": 50.0
+    },
+    {
+      "cancellation_reason_id": 2,
+      "reason": "Out of stock",
+      "total_cancellations": 8,
+      "total_value": 400000,
+      "percentage": 26.67
+    },
+    {
+      "cancellation_reason_id": 3,
+      "reason": "Long wait time",
+      "total_cancellations": 7,
+      "total_value": 350000,
+      "percentage": 23.33
+    }
+  ]
+}
+```
+
+## Profit Analysis
+
+### Get Profit Summary
+
+Analyze gross profit grouped by date.
+
+**Endpoint:** `GET /reports/profit-summary`
+
+**Required Role:** Admin, Manager, Cashier
+
+```go title="internal/report/handler.go:330-383"
+func (r *RptHandler) GetProfitSummaryHandler(c fiber.Ctx) error {
+    var req SalesReportRequest
+    if err := c.Bind().Query(&req); err != nil {
+        r.log.Warnf("Get profit summary validation failed", "error", err)
+        var ve *validator.ValidationErrors
+        if errors.As(err, &ve) {
+            return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+                Message: "Validation failed",
+                Error:   ve.Error(),
+                Data: map[string]interface{}{
+                    "errors": ve.Errors,
+                },
+            })
+        }
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid query parameters",
+            Error:   err.Error(),
+        })
+    }
+
+    startDate, _ := time.Parse("2006-01-02", req.StartDate)
+    endDate, _ := time.Parse("2006-01-02", req.EndDate)
+
+    serviceReq := &SalesReportServiceRequest{
+        StartDate: startDate,
+        EndDate:   endDate,
+    }
+
+    results, err := r.Service.GetProfitSummary(c.RequestCtx(), serviceReq)
+    if err != nil {
+        r.log.Error("Failed to get profit summary", "error", err)
+        return c.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+            Message: "Failed to get profit summary",
+        })
+    }
+
+    return c.Status(fiber.StatusOK).JSON(common.SuccessResponse{
+        Message: "Profit summary retrieved successfully",
+        Data:    results,
+    })
+}
+```
+
+**Example Request:**
+```
+GET /reports/profit-summary?start_date=2024-03-01&end_date=2024-03-31
+```
+
+**Response:**
+```json
+{
+  "message": "Profit summary retrieved successfully",
+  "data": [
+    {
+      "date": "2024-03-01",
+      "total_revenue": 2250000,
+      "total_cost": 900000,
+      "gross_profit": 1350000,
+      "profit_margin": 60.0,
+      "total_orders": 45
+    },
+    {
+      "date": "2024-03-02",
+      "total_revenue": 2600000,
+      "total_cost": 1040000,
+      "gross_profit": 1560000,
+      "profit_margin": 60.0,
+      "total_orders": 52
+    }
+  ]
+}
+```
+
+### Get Product Profit Report
+
+Analyze profitability by product.
+
+**Endpoint:** `GET /reports/profit-products`
+
+**Required Role:** Admin, Manager, Cashier
+
+```go title="internal/report/handler.go:385-438"
+func (r *RptHandler) GetProductProfitReportsHandler(c fiber.Ctx) error {
+    var req SalesReportRequest
+    if err := c.Bind().Query(&req); err != nil {
+        r.log.Warnf("Get product profit reports validation failed", "error", err)
+        var ve *validator.ValidationErrors
+        if errors.As(err, &ve) {
+            return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+                Message: "Validation failed",
+                Error:   ve.Error(),
+                Data: map[string]interface{}{
+                    "errors": ve.Errors,
+                },
+            })
+        }
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid query parameters",
+            Error:   err.Error(),
+        })
+    }
+
+    startDate, _ := time.Parse("2006-01-02", req.StartDate)
+    endDate, _ := time.Parse("2006-01-02", req.EndDate)
+
+    serviceReq := &SalesReportServiceRequest{
+        StartDate: startDate,
+        EndDate:   endDate,
+    }
+
+    results, err := r.Service.GetProductProfitReports(c.RequestCtx(), serviceReq)
+    if err != nil {
+        r.log.Error("Failed to get product profit reports", "error", err)
+        return c.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+            Message: "Failed to get product profit reports",
+        })
+    }
+
+    return c.Status(fiber.StatusOK).JSON(common.SuccessResponse{
+        Message: "Product profit reports retrieved successfully",
+        Data:    results,
+    })
+}
+```
+
+**Example Request:**
+```
+GET /reports/profit-products?start_date=2024-03-01&end_date=2024-03-31
+```
+
+**Response:**
+```json
+{
+  "message": "Product profit reports retrieved successfully",
+  "data": [
+    {
+      "product_id": "550e8400-e29b-41d4-a716-446655440000",
+      "product_name": "Espresso",
+      "category_name": "Coffee",
+      "total_quantity_sold": 320,
+      "total_revenue": 8000000,
+      "total_cost": 3200000,
+      "gross_profit": 4800000,
+      "profit_margin": 60.0,
+      "average_profit_per_unit": 15000
+    },
+    {
+      "product_id": "770e8400-e29b-41d4-a716-446655440002",
+      "product_name": "Cappuccino",
+      "category_name": "Coffee",
+      "total_quantity_sold": 245,
+      "total_revenue": 7350000,
+      "total_cost": 2940000,
+      "gross_profit": 4410000,
+      "profit_margin": 60.0,
+      "average_profit_per_unit": 18000
+    }
+  ]
+}
+```
+
+## Report Handler Interface
+
+```go title="internal/report/handler.go:13-22"
+type IRptHandler interface {
+    GetDashboardSummaryHandler(c fiber.Ctx) error
+    GetSalesReportsHandler(c fiber.Ctx) error
+    GetProductPerformanceHandler(c fiber.Ctx) error
+    GetPaymentMethodPerformanceHandler(c fiber.Ctx) error
+    GetCashierPerformanceHandler(c fiber.Ctx) error
+    GetCancellationReportsHandler(c fiber.Ctx) error
+    GetProfitSummaryHandler(c fiber.Ctx) error
+    GetProductProfitReportsHandler(c fiber.Ctx) error
+}
+```
+
+## Use Cases
+
+### Monthly Sales Review
+
+```javascript
+// Get comprehensive monthly report
+const startDate = '2024-03-01'
+const endDate = '2024-03-31'
+
+const [sales, products, payments, cashiers, profit] = await Promise.all([
+  fetch(`/reports/sales?start_date=${startDate}&end_date=${endDate}`),
+  fetch(`/reports/products?start_date=${startDate}&end_date=${endDate}`),
+  fetch(`/reports/payment-methods?start_date=${startDate}&end_date=${endDate}`),
+  fetch(`/reports/cashier-performance?start_date=${startDate}&end_date=${endDate}`),
+  fetch(`/reports/profit-summary?start_date=${startDate}&end_date=${endDate}`)
+]).then(responses => Promise.all(responses.map(r => r.json())))
+
+const report = {
+  period: { start: startDate, end: endDate },
+  sales: sales.data,
+  topProducts: products.data.slice(0, 10),
+  paymentBreakdown: payments.data,
+  topCashiers: cashiers.data.slice(0, 5),
+  profitability: profit.data
+}
+```
+
+### Daily Performance Dashboard
+
+```javascript
+// Get today's metrics
+const today = new Date().toISOString().split('T')[0]
+
+const [summary, todaySales] = await Promise.all([
+  fetch('/reports/dashboard-summary'),
+  fetch(`/reports/sales?start_date=${today}&end_date=${today}`)
+]).then(responses => Promise.all(responses.map(r => r.json())))
+
+const dashboard = {
+  summary: summary.data,
+  todayDetails: todaySales.data[0],
+  hourlyTrend: calculateHourlyTrend(todaySales.data[0])
+}
+```
+
+### Product Performance Analysis
+
+```javascript
+// Identify best and worst performers
+const performance = await fetch(
+  '/reports/products?start_date=2024-03-01&end_date=2024-03-31'
+).then(r => r.json())
+
+const analysis = {
+  topSellers: performance.data.slice(0, 5),
+  lowPerformers: performance.data.slice(-5),
+  averageRevenue: performance.data.reduce((sum, p) => 
+    sum + p.total_revenue, 0) / performance.data.length
+}
+```
+
+## Best Practices
+
+1. **Date Range Limits** - Restrict date ranges to prevent performance issues (e.g., max 1 year)
+2. **Caching** - Cache frequently accessed reports with short TTL
+3. **Scheduled Generation** - Pre-generate daily/weekly reports during off-peak hours
+4. **Data Aggregation** - Use database aggregations instead of application-level calculations
+5. **Export Functionality** - Provide CSV/PDF export options for reports
+6. **Real-Time Updates** - Use WebSocket for live dashboard updates
+7. **Comparative Analysis** - Show period-over-period comparisons (vs previous month/year)
+8. **Visualization** - Implement charts and graphs for better data interpretation
+
+## Performance Considerations
+
+- Reports query large datasets, consider:
+  - Database indexing on date columns
+  - Read replicas for report queries
+  - Query result caching
+  - Pagination for large result sets
+  - Background job processing for heavy reports
+
+## Related Features
+
+- [Transactions](/features/transactions) - Transaction history and details
+- [Orders & POS](/features/orders-and-pos) - Order data used in reports
+- [Payments](/features/payments) - Payment data analytics
+- [User Management](/features/user-management) - Cashier performance tracking

@@ -1,0 +1,626 @@
+---
+title: Orders & POS
+description: Complete order management system with cart functionality, order workflow, and status tracking
+---
+
+## Overview
+
+POS Kasir implements a comprehensive Point of Sale (POS) system with support for dine-in and takeaway orders, real-time order tracking, item modifications, and multi-step order workflow.
+
+## Order Types
+
+The system supports two order types:
+
+```go title="internal/orders/dto.go:27-29"
+type CreateOrderRequest struct {
+    Type  repository.OrderType     `json:"type" validate:"required,oneof=dine_in takeaway"`
+    Items []CreateOrderItemRequest `json:"items" validate:"required,min=1,dive"`
+}
+```
+
+- **dine_in** - Customer dining at the restaurant
+- **takeaway** - Order for pickup
+
+## Order Statuses
+
+```go title="internal/orders/dto.go:32-36"
+type ListOrdersRequest struct {
+    Statuses []repository.OrderStatus `query:"statuses" validate:"dive,oneof=open in_progress served paid cancelled"`
+}
+```
+
+- **open** - Order created, waiting to be processed
+- **in_progress** - Order is being prepared
+- **served** - Order has been served to customer
+- **paid** - Payment completed, order finalized
+- **cancelled** - Order cancelled
+
+## Creating Orders
+
+### Create Order
+
+Create a new order with multiple items and options.
+
+**Endpoint:** `POST /orders`
+
+**Required Role:** Admin, Manager, Cashier
+
+```go title="internal/orders/handler.go:381-421"
+func (h *OrderHandler) CreateOrderHandler(c fiber.Ctx) error {
+    var req CreateOrderRequest
+    if err := c.Bind().Body(&req); err != nil {
+        var ve *validator.ValidationErrors
+        if errors.As(err, &ve) {
+            return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+                Message: "Validation failed",
+                Error:   ve.Error(),
+                Data: map[string]interface{}{
+                    "errors": ve.Errors,
+                },
+            })
+        }
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid request body"
+        })
+    }
+
+    orderResponse, err := h.orderService.CreateOrder(c.RequestCtx(), req)
+    if err != nil {
+        return c.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+            Message: "Failed to create order"
+        })
+    }
+
+    return c.Status(fiber.StatusCreated).JSON(common.SuccessResponse{
+        Message: "Order created successfully",
+        Data:    orderResponse,
+    })
+}
+```
+
+**Request Body:**
+```json
+{
+  "type": "dine_in",
+  "items": [
+    {
+      "product_id": "550e8400-e29b-41d4-a716-446655440000",
+      "quantity": 2,
+      "options": [
+        {
+          "product_option_id": "660e8400-e29b-41d4-a716-446655440001"
+        }
+      ]
+    },
+    {
+      "product_id": "770e8400-e29b-41d4-a716-446655440002",
+      "quantity": 1,
+      "options": []
+    }
+  ]
+}
+```
+
+**Response:**
+```json
+{
+  "message": "Order created successfully",
+  "data": {
+    "id": "880e8400-e29b-41d4-a716-446655440003",
+    "user_id": "990e8400-e29b-41d4-a716-446655440004",
+    "type": "dine_in",
+    "status": "open",
+    "gross_total": 60000,
+    "discount_amount": 0,
+    "net_total": 60000,
+    "created_at": "2024-03-03T10:00:00Z",
+    "updated_at": "2024-03-03T10:00:00Z",
+    "items": [
+      {
+        "id": "aa0e8400-e29b-41d4-a716-446655440005",
+        "product_id": "550e8400-e29b-41d4-a716-446655440000",
+        "product_name": "Espresso",
+        "quantity": 2,
+        "price_at_sale": 25000,
+        "subtotal": 50000,
+        "options": [
+          {
+            "product_option_id": "660e8400-e29b-41d4-a716-446655440001",
+            "option_name": "Large",
+            "price_at_sale": 5000
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### Get Order
+
+**Endpoint:** `GET /orders/{id}`
+
+**Required Role:** Admin, Manager, Cashier
+
+```go title="internal/orders/handler.go:423-458"
+func (h *OrderHandler) GetOrderHandler(c fiber.Ctx) error {
+    orderID, err := fiber.Convert(c.Params("id"), uuid.Parse)
+    if err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid order ID format"
+        })
+    }
+
+    orderResponse, err := h.orderService.GetOrder(c.RequestCtx(), orderID)
+    if err != nil {
+        if errors.Is(err, common.ErrNotFound) {
+            return c.Status(fiber.StatusNotFound).JSON(common.ErrorResponse{
+                Message: "Order not found"
+            })
+        }
+        return c.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+            Message: "Failed to retrieve order"
+        })
+    }
+
+    return c.Status(fiber.StatusOK).JSON(common.SuccessResponse{
+        Message: "Order retrieved successfully",
+        Data:    orderResponse,
+    })
+}
+```
+
+### List Orders
+
+Retrieve orders with filtering and pagination.
+
+**Endpoint:** `GET /orders`
+
+**Required Role:** Admin, Manager, Cashier
+
+```go title="internal/orders/handler.go:311-379"
+func (h *OrderHandler) ListOrdersHandler(c fiber.Ctx) error {
+    var req ListOrdersRequest
+    if err := c.Bind().Query(&req); err != nil {
+        var ve *validator.ValidationErrors
+        if errors.As(err, &ve) {
+            return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+                Message: "Validation failed",
+                Error:   ve.Error(),
+                Data: map[string]interface{}{
+                    "errors": ve.Errors,
+                },
+            })
+        }
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid query parameters"
+        })
+    }
+
+    // Get current user role and ID
+    currentRoleRaw := c.Locals("role")
+    currentRole, ok := currentRoleRaw.(middleware.UserRole)
+    if !ok {
+        roleStr, okStr := currentRoleRaw.(string)
+        if okStr {
+            currentRole = middleware.UserRole(roleStr)
+        } else {
+            return c.Status(fiber.StatusUnauthorized).JSON(common.ErrorResponse{
+                Message: "Unauthorized"
+            })
+        }
+    }
+
+    currentUserIDRaw := c.Locals("user_id")
+    currentUserID, ok := currentUserIDRaw.(uuid.UUID)
+    if !ok {
+        return c.Status(fiber.StatusUnauthorized).JSON(common.ErrorResponse{
+            Message: "Unauthorized"
+        })
+    }
+
+    // Cashiers can only see their own orders
+    if currentRole == middleware.UserRoleCashier {
+        req.UserID = &currentUserID
+    }
+
+    pagedResponse, err := h.orderService.ListOrders(c.RequestCtx(), req)
+    if err != nil {
+        return c.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+            Message: "Failed to retrieve orders"
+        })
+    }
+
+    return c.Status(fiber.StatusOK).JSON(common.SuccessResponse{
+        Message: "Orders retrieved successfully",
+        Data:    pagedResponse,
+    })
+}
+```
+
+**Query Parameters:**
+- `page` - Page number
+- `limit` - Items per page (max: 100)
+- `statuses` - Filter by statuses (array)
+- `user_id` - Filter by user (UUID)
+
+**Example:**
+```
+GET /orders?page=1&limit=20&statuses=open&statuses=in_progress
+```
+
+**Note:** Cashiers automatically see only their own orders, while Admins and Managers can view all orders.
+
+## Order Modifications
+
+### Update Order Items
+
+Modify items in an existing open order.
+
+**Endpoint:** `PUT /orders/{id}/items`
+
+**Required Role:** Admin, Manager, Cashier
+
+```go title="internal/orders/handler.go:210-253"
+func (h *OrderHandler) UpdateOrderItemsHandler(c fiber.Ctx) error {
+    orderID, err := fiber.Convert(c.Params("id"), uuid.Parse)
+    if err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid order ID format"
+        })
+    }
+
+    var req []UpdateOrderItemRequest
+    if err := c.Bind().Body(&req); err != nil {
+        var ve *validator.ValidationErrors
+        if errors.As(err, &ve) {
+            return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+                Message: "Validation failed",
+                Error:   ve.Error(),
+                Data: map[string]interface{}{
+                    "errors": ve.Errors,
+                },
+            })
+        }
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid request body, expected an array of actions"
+        })
+    }
+
+    updatedOrder, err := h.orderService.UpdateOrderItems(c.RequestCtx(), orderID, req)
+    if err != nil {
+        return c.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+            Message: "Failed to update order items"
+        })
+    }
+
+    return c.Status(fiber.StatusOK).JSON(common.SuccessResponse{
+        Message: "Order items updated successfully",
+        Data:    updatedOrder,
+    })
+}
+```
+
+**Request Body:**
+```json
+[
+  {
+    "product_id": "550e8400-e29b-41d4-a716-446655440000",
+    "quantity": 3,
+    "options": [
+      {
+        "product_option_id": "660e8400-e29b-41d4-a716-446655440001"
+      }
+    ]
+  }
+]
+```
+
+### Update Order Status
+
+Update the operational status of an order.
+
+**Endpoint:** `POST /orders/{id}/update-status`
+
+**Required Role:** Admin, Manager, Cashier
+
+```go title="internal/orders/handler.go:95-150"
+func (h *OrderHandler) UpdateOperationalStatusHandler(c fiber.Ctx) error {
+    orderID, err := fiber.Convert(c.Params("id"), uuid.Parse)
+    if err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid order ID format"
+        })
+    }
+
+    var req UpdateOrderStatusRequest
+    if err := c.Bind().Body(&req); err != nil {
+        var ve *validator.ValidationErrors
+        if errors.As(err, &ve) {
+            return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+                Message: "Validation failed",
+                Error:   ve.Error(),
+                Data: map[string]interface{}{
+                    "errors": ve.Errors,
+                },
+            })
+        }
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid request body"
+        })
+    }
+
+    orderResponse, err := h.orderService.UpdateOperationalStatus(c.RequestCtx(), orderID, req)
+    if err != nil {
+        if errors.Is(err, common.ErrNotFound) {
+            return c.Status(fiber.StatusNotFound).JSON(common.ErrorResponse{
+                Message: "Order not found"
+            })
+        }
+        if errors.Is(err, common.ErrInvalidStatusTransition) {
+            return c.Status(fiber.StatusConflict).JSON(common.ErrorResponse{
+                Message: "Invalid status transition", 
+                Error:   err.Error()
+            })
+        }
+        return c.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+            Message: "Failed to update order status"
+        })
+    }
+
+    return c.Status(fiber.StatusOK).JSON(common.SuccessResponse{
+        Message: "Order status updated successfully",
+        Data:    orderResponse,
+    })
+}
+```
+
+**Request Body:**
+```json
+{
+  "status": "in_progress"
+}
+```
+
+**Valid Status Transitions:**
+- `open` → `in_progress`
+- `in_progress` → `served`
+- `served` → `paid`
+
+## Order Cancellation
+
+### Cancel Order
+
+**Endpoint:** `POST /orders/{id}/cancel`
+
+**Required Role:** Admin, Manager, Cashier
+
+```go title="internal/orders/handler.go:255-309"
+func (h *OrderHandler) CancelOrderHandler(c fiber.Ctx) error {
+    orderID, err := fiber.Convert(c.Params("id"), uuid.Parse)
+    if err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid order ID format"
+        })
+    }
+
+    var req CancelOrderRequest
+    if err := c.Bind().Body(&req); err != nil {
+        var ve *validator.ValidationErrors
+        if errors.As(err, &ve) {
+            return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+                Message: "Validation failed",
+                Error:   ve.Error(),
+                Data: map[string]interface{}{
+                    "errors": ve.Errors,
+                },
+            })
+        }
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid request body"
+        })
+    }
+
+    err = h.orderService.CancelOrder(c.RequestCtx(), orderID, req)
+    if err != nil {
+        if errors.Is(err, common.ErrNotFound) {
+            return c.Status(fiber.StatusNotFound).JSON(common.ErrorResponse{
+                Message: "Order not found"
+            })
+        }
+        if errors.Is(err, common.ErrOrderNotCancellable) {
+            return c.Status(fiber.StatusConflict).JSON(common.ErrorResponse{
+                Message: "Order cannot be cancelled", 
+                Error:   "Order might have been paid or already cancelled."
+            })
+        }
+        return c.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+            Message: "Failed to cancel order"
+        })
+    }
+
+    return c.Status(fiber.StatusOK).JSON(common.SuccessResponse{
+        Message: "Order cancelled successfully",
+    })
+}
+```
+
+**Request Body:**
+```json
+{
+  "cancellation_reason_id": 1,
+  "cancellation_notes": "Customer changed mind"
+}
+```
+
+## Promotions
+
+### Apply Promotion
+
+Apply a promotion discount to an order.
+
+**Endpoint:** `POST /orders/{id}/apply-promotion`
+
+**Required Role:** Admin, Manager, Cashier
+
+```go title="internal/orders/handler.go:40-93"
+func (h *OrderHandler) ApplyPromotionHandler(c fiber.Ctx) error {
+    orderID, err := fiber.Convert(c.Params("id"), uuid.Parse)
+    if err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid order ID format"
+        })
+    }
+
+    var req ApplyPromotionRequest
+    if err := c.Bind().Body(&req); err != nil {
+        var ve *validator.ValidationErrors
+        if errors.As(err, &ve) {
+            return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+                Message: "Validation failed",
+                Error:   ve.Error(),
+                Data: map[string]interface{}{
+                    "errors": ve.Errors,
+                },
+            })
+        }
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid request body"
+        })
+    }
+
+    orderResponse, err := h.orderService.ApplyPromotion(c.RequestCtx(), orderID, req)
+    if err != nil {
+        if errors.Is(err, common.ErrNotFound) {
+            return c.Status(fiber.StatusNotFound).JSON(common.ErrorResponse{
+                Message: "Order or Promotion not found"
+            })
+        }
+        if errors.Is(err, common.ErrPromotionNotApplicable) {
+            return c.Status(fiber.StatusConflict).JSON(common.ErrorResponse{
+                Message: "Promotion cannot be applied", 
+                Error:   err.Error()
+            })
+        }
+        return c.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+            Message: "Failed to apply promotion"
+        })
+    }
+
+    return c.Status(fiber.StatusOK).JSON(common.SuccessResponse{
+        Message: "Promotion applied successfully",
+        Data:    orderResponse,
+    })
+}
+```
+
+**Request Body:**
+```json
+{
+  "promotion_id": "bb0e8400-e29b-41d4-a716-446655440006"
+}
+```
+
+## Data Transfer Objects
+
+```go title="internal/orders/dto.go:16-56"
+type CreateOrderItemOptionRequest struct {
+    ProductOptionID uuid.UUID `json:"product_option_id" validate:"required"`
+}
+
+type CreateOrderItemRequest struct {
+    ProductID uuid.UUID                      `json:"product_id" validate:"required"`
+    Quantity  int32                          `json:"quantity" validate:"required,gt=0"`
+    Options   []CreateOrderItemOptionRequest `json:"options" validate:"dive"`
+}
+
+type CreateOrderRequest struct {
+    Type  repository.OrderType     `json:"type" validate:"required,oneof=dine_in takeaway"`
+    Items []CreateOrderItemRequest `json:"items" validate:"required,min=1,dive"`
+}
+
+type CancelOrderRequest struct {
+    CancellationReasonID int32  `json:"cancellation_reason_id" validate:"required,gt=0"`
+    CancellationNotes    string `json:"cancellation_notes" validate:"omitempty,max=255"`
+}
+
+type UpdateOrderItemRequest struct {
+    ProductID uuid.UUID                      `json:"product_id" validate:"required"`
+    Quantity  int32                          `json:"quantity" validate:"required,gt=0"`
+    Options   []CreateOrderItemOptionRequest `json:"options" validate:"dive"`
+}
+
+type ConfirmManualPaymentRequest struct {
+    PaymentMethodID int32 `json:"payment_method_id" validate:"required,gt=0"`
+    CashReceived    int64 `json:"cash_received" validate:"omitempty,gte=0"`
+}
+
+type UpdateOrderStatusRequest struct {
+    Status repository.OrderStatus `json:"status" validate:"required,oneof=in_progress served paid"`
+}
+```
+
+## Order Response Structure
+
+```go title="internal/orders/dto.go:74-90"
+type OrderDetailResponse struct {
+    ID                      uuid.UUID              `json:"id"`
+    UserID                  *uuid.UUID             `json:"user_id,omitempty"`
+    Type                    repository.OrderType   `json:"type"`
+    Status                  repository.OrderStatus `json:"status"`
+    GrossTotal              int64                  `json:"gross_total"`
+    DiscountAmount          int64                  `json:"discount_amount"`
+    NetTotal                int64                  `json:"net_total"`
+    PaymentMethodID         *int32                 `json:"payment_method_id,omitempty"`
+    PaymentGatewayReference *string                `json:"payment_gateway_reference,omitempty"`
+    CashReceived            *int64                 `json:"cash_received,omitempty"`
+    ChangeDue               *int64                 `json:"change_due,omitempty"`
+    AppliedPromotionID      *uuid.UUID             `json:"applied_promotion_id,omitempty"`
+    CreatedAt               time.Time              `json:"created_at"`
+    UpdatedAt               time.Time              `json:"updated_at"`
+    Items                   []OrderItemResponse    `json:"items"`
+}
+```
+
+## Workflow Example
+
+### Complete Order Flow
+
+1. **Create Order** - Cashier creates order with items
+   ```
+   POST /orders
+   Status: open
+   ```
+
+2. **Apply Promotion** (Optional) - Apply discount if available
+   ```
+   POST /orders/{id}/apply-promotion
+   ```
+
+3. **Update to In Progress** - Kitchen starts preparing
+   ```
+   POST /orders/{id}/update-status
+   { "status": "in_progress" }
+   ```
+
+4. **Update to Served** - Order delivered to customer
+   ```
+   POST /orders/{id}/update-status
+   { "status": "served" }
+   ```
+
+5. **Process Payment** - Complete payment and finalize
+   ```
+   POST /orders/{id}/pay/manual
+   { "payment_method_id": 1, "cash_received": 100000 }
+   Status: paid
+   ```
+
+## Best Practices
+
+1. **Stock Validation** - Always verify product availability before creating orders
+2. **Price Snapshot** - Prices are captured at order creation time (price_at_sale)
+3. **Status Transitions** - Follow the defined workflow for status updates
+4. **Cancellation Tracking** - Always provide a reason when cancelling orders
+5. **Role-Based Filtering** - Cashiers should only access their own orders
+6. **Real-Time Updates** - Consider WebSocket integration for live order status updates

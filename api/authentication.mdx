@@ -1,0 +1,396 @@
+---
+title: 'Authentication'
+description: 'JWT-based authentication system for the POS Kasir API'
+---
+
+## Overview
+
+The POS Kasir API uses **JWT (JSON Web Token)** based authentication with access and refresh token mechanisms. Authentication is required for all endpoints except login and refresh token endpoints.
+
+## Authentication Flow
+
+### 1. Login
+
+Obtain access and refresh tokens by providing valid credentials:
+
+**Endpoint**: `POST /auth/login`
+
+```json Request
+{
+  "email": "user@example.com",
+  "password": "your_password"
+}
+```
+
+```json Response
+{
+  "message": "Login successful",
+  "data": {
+    "Token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "expired_at": "2024-03-04T10:30:00Z",
+    "profile": {
+      "id": "uuid-here",
+      "username": "john_doe",
+      "email": "user@example.com",
+      "role": "cashier",
+      "avatar": "https://...",
+      "is_active": true,
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-03-01T00:00:00Z"
+    }
+  }
+}
+```
+
+<Note>
+  Both tokens are also set as HTTP-only cookies for browser-based clients.
+</Note>
+
+### 2. Making Authenticated Requests
+
+Include the access token in the `Authorization` header:
+
+```bash
+Authorization: Bearer YOUR_ACCESS_TOKEN
+```
+
+**Example with cURL**:
+
+```bash
+curl -X GET https://api-pos.agprastyo.me/api/v1/auth/me \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+**Example with JavaScript**:
+
+```javascript
+const response = await fetch('https://api-pos.agprastyo.me/api/v1/auth/me', {
+  headers: {
+    'Authorization': `Bearer ${accessToken}`,
+    'Content-Type': 'application/json'
+  }
+});
+```
+
+### 3. Refreshing Tokens
+
+When the access token expires, use the refresh token to obtain a new access token:
+
+**Endpoint**: `POST /auth/refresh`
+
+<Info>
+  The refresh token should be sent via HTTP-only cookie or can be included in the request header.
+</Info>
+
+```json Response
+{
+  "message": "Token refreshed successfully",
+  "data": {
+    "Token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "expired_at": "2024-03-04T11:30:00Z"
+  }
+}
+```
+
+### 4. Logout
+
+Clear authentication tokens:
+
+**Endpoint**: `POST /auth/logout`
+
+```json Response
+{
+  "message": "Successfully logged out",
+  "data": null
+}
+```
+
+<Note>
+  This clears the HTTP-only cookies. Clients should also remove locally stored tokens.
+</Note>
+
+## Token Management
+
+### Access Token
+
+- **Lifetime**: Typically 15-60 minutes (check `expired_at` in response)
+- **Purpose**: Authenticate API requests
+- **Storage**: Can be stored in memory or local storage
+- **Transmission**: Sent in `Authorization` header
+
+### Refresh Token
+
+- **Lifetime**: Longer duration (typically 7-30 days)
+- **Purpose**: Obtain new access tokens
+- **Storage**: HTTP-only cookie (recommended) or secure storage
+- **Transmission**: Automatically sent via cookie or in request body
+
+<Warning>
+  Never expose tokens in URLs, logs, or client-side code. Always use HTTPS in production.
+</Warning>
+
+## Role-Based Access Control
+
+The API enforces role-based permissions. Three roles are available:
+
+| Role | Access Level | Typical Use Case |
+|------|-------------|------------------|
+| **admin** | Full system access | System configuration, user management |
+| **manager** | Management operations | Inventory, reports, promotions |
+| **cashier** | Transaction operations | Create orders, process payments |
+
+### Role Requirements by Endpoint
+
+Endpoints specify required roles in their documentation. For example:
+
+- `POST /auth/add` - Requires: `admin`
+- `GET /products` - Requires: `admin`, `manager`, `cashier`
+- `POST /orders` - Requires: `admin`, `manager`, `cashier`
+- `GET /activity-logs` - Requires: `admin`
+
+<Info>
+  If you attempt to access an endpoint without proper role permissions, you'll receive a `403 Forbidden` response.
+</Info>
+
+## Authentication Examples
+
+### Complete Login Flow (JavaScript)
+
+```javascript
+class PosKasirAPI {
+  constructor(baseURL) {
+    this.baseURL = baseURL;
+    this.accessToken = null;
+    this.refreshToken = null;
+  }
+
+  async login(email, password) {
+    const response = await fetch(`${this.baseURL}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+
+    const data = await response.json();
+    
+    if (response.ok) {
+      this.accessToken = data.data.Token;
+      this.refreshToken = data.data.refresh_token;
+      return data.data;
+    }
+    
+    throw new Error(data.message);
+  }
+
+  async refreshAccessToken() {
+    const response = await fetch(`${this.baseURL}/auth/refresh`, {
+      method: 'POST',
+      credentials: 'include' // Include cookies
+    });
+
+    const data = await response.json();
+    
+    if (response.ok) {
+      this.accessToken = data.data.Token;
+      return data.data.Token;
+    }
+    
+    throw new Error('Failed to refresh token');
+  }
+
+  async request(endpoint, options = {}) {
+    const headers = {
+      'Content-Type': 'application/json',
+      ...options.headers
+    };
+
+    if (this.accessToken) {
+      headers['Authorization'] = `Bearer ${this.accessToken}`;
+    }
+
+    let response = await fetch(`${this.baseURL}${endpoint}`, {
+      ...options,
+      headers
+    });
+
+    // Auto-refresh on 401
+    if (response.status === 401 && this.refreshToken) {
+      await this.refreshAccessToken();
+      headers['Authorization'] = `Bearer ${this.accessToken}`;
+      
+      response = await fetch(`${this.baseURL}${endpoint}`, {
+        ...options,
+        headers
+      });
+    }
+
+    return response.json();
+  }
+
+  async logout() {
+    await this.request('/auth/logout', { method: 'POST' });
+    this.accessToken = null;
+    this.refreshToken = null;
+  }
+}
+
+// Usage
+const api = new PosKasirAPI('https://api-pos.agprastyo.me/api/v1');
+
+// Login
+await api.login('user@example.com', 'password123');
+
+// Make authenticated request
+const profile = await api.request('/auth/me');
+```
+
+### Login with Python
+
+```python
+import requests
+from typing import Optional
+
+class PosKasirAPI:
+    def __init__(self, base_url: str):
+        self.base_url = base_url
+        self.access_token: Optional[str] = None
+        self.session = requests.Session()
+    
+    def login(self, email: str, password: str) -> dict:
+        """Authenticate and store access token"""
+        response = self.session.post(
+            f"{self.base_url}/auth/login",
+            json={"email": email, "password": password}
+        )
+        response.raise_for_status()
+        
+        data = response.json()
+        self.access_token = data["data"]["Token"]
+        return data["data"]
+    
+    def request(self, method: str, endpoint: str, **kwargs) -> dict:
+        """Make authenticated API request"""
+        headers = kwargs.pop("headers", {})
+        
+        if self.access_token:
+            headers["Authorization"] = f"Bearer {self.access_token}"
+        
+        response = self.session.request(
+            method,
+            f"{self.base_url}{endpoint}",
+            headers=headers,
+            **kwargs
+        )
+        
+        # Auto-refresh on 401
+        if response.status_code == 401:
+            self.refresh_token()
+            headers["Authorization"] = f"Bearer {self.access_token}"
+            response = self.session.request(
+                method,
+                f"{self.base_url}{endpoint}",
+                headers=headers,
+                **kwargs
+            )
+        
+        response.raise_for_status()
+        return response.json()
+    
+    def refresh_token(self) -> str:
+        """Refresh access token"""
+        response = self.session.post(f"{self.base_url}/auth/refresh")
+        response.raise_for_status()
+        
+        data = response.json()
+        self.access_token = data["data"]["Token"]
+        return self.access_token
+    
+    def logout(self):
+        """Logout and clear tokens"""
+        self.request("POST", "/auth/logout")
+        self.access_token = None
+
+# Usage
+api = PosKasirAPI("https://api-pos.agprastyo.me/api/v1")
+api.login("user@example.com", "password123")
+
+# Make authenticated requests
+profile = api.request("GET", "/auth/me")
+products = api.request("GET", "/products", params={"page": 1, "limit": 20})
+```
+
+## Common Authentication Errors
+
+### 401 Unauthorized
+
+```json
+{
+  "message": "Invalid or expired token",
+  "error": {},
+  "data": null
+}
+```
+
+**Solution**: Refresh your access token or re-authenticate.
+
+### 403 Forbidden
+
+```json
+{
+  "message": "Insufficient permissions",
+  "error": {},
+  "data": null
+}
+```
+
+**Solution**: Ensure your user role has permission to access the endpoint.
+
+### Missing Authorization Header
+
+```json
+{
+  "message": "Authorization header required",
+  "error": {},
+  "data": null
+}
+```
+
+**Solution**: Include `Authorization: Bearer <token>` in your request headers.
+
+## Security Best Practices
+
+<Warning>
+  **Important Security Guidelines**
+</Warning>
+
+1. **Use HTTPS Only** - Never send tokens over unencrypted connections
+2. **Secure Storage** - Store tokens securely (HTTP-only cookies, encrypted storage)
+3. **Token Expiration** - Always check token expiration and refresh proactively
+4. **Logout Properly** - Clear all tokens on logout
+5. **Validate Responses** - Always check response status codes
+6. **Environment Variables** - Never hardcode credentials in source code
+7. **CORS Configuration** - Configure proper CORS policies for web applications
+
+## Testing Authentication
+
+Test the authentication flow using the Swagger UI:
+
+<Card
+  title="Try Authentication in Swagger"
+  icon="vial"
+  href="https://api-pos.agprastyo.me/swagger/index.html#/Auth"
+>
+  Test login, token refresh, and authenticated endpoints interactively
+</Card>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Error Handling" icon="bug" href="/api/errors">
+    Learn how to handle API errors
+  </Card>
+  <Card title="User Management" icon="users" href="/api/users">
+    Manage users and roles
+  </Card>
+</CardGroup>

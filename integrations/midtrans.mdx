@@ -1,0 +1,178 @@
+---
+title: Midtrans Payment Gateway
+description: Setup and configure Midtrans for QRIS payments in POS Kasir
+---
+
+POS Kasir integrates with Midtrans to provide QRIS payment capabilities, allowing customers to pay using any Indonesian e-wallet supporting QRIS.
+
+## Overview
+
+The Midtrans integration supports:
+- QRIS payment generation
+- Transaction status checking
+- Payment cancellation
+- Webhook notification verification
+
+## Configuration
+
+### Environment Variables
+
+Add the following variables to your `.env` file:
+
+```bash
+# Midtrans Configuration
+MIDTRANS_SERVER_KEY=SB-Mid-server-xxxxxxxxxxxx
+MIDTRANS_IS_PROD=false
+```
+
+<Warning>
+When `MIDTRANS_IS_PROD=false`, the system uses Midtrans Sandbox environment. Use sandbox credentials for testing. Switch to production credentials and set `MIDTRANS_IS_PROD=true` only when going live.
+</Warning>
+
+### Getting API Credentials
+
+1. Sign up at [Midtrans Dashboard](https://dashboard.midtrans.com/)
+2. Navigate to **Settings** > **Access Keys**
+3. Copy your **Server Key**
+4. For production, complete merchant verification and obtain production credentials
+
+## Implementation Details
+
+The Midtrans service is located in `/workspace/source/pkg/payment/midtrans.go:43`.
+
+### Creating QRIS Charge
+
+The system creates a QRIS charge using the GoPay payment type:
+
+```go
+chargeReq := &coreapi.ChargeReq{
+    PaymentType: coreapi.PaymentTypeGopay,
+    TransactionDetails: midtrans.TransactionDetails{
+        OrderID:  orderID,
+        GrossAmt: amount,
+    },
+}
+```
+
+This generates a QRIS code that customers can scan with any compatible e-wallet app.
+
+### Checking Transaction Status
+
+You can check the status of any transaction using its Order ID:
+
+```go
+status, err := midtransService.GetQRISCharge(orderID)
+```
+
+Possible transaction statuses:
+- `pending` - Payment not yet completed
+- `settlement` - Payment successful
+- `cancel` - Transaction cancelled
+- `expire` - Payment expired
+- `deny` - Payment denied
+
+### Cancelling Transactions
+
+Cancel a pending transaction:
+
+```go
+response, err := midtransService.CancelTransaction(orderID)
+```
+
+## Webhook Notifications
+
+Midtrans sends HTTP notifications when payment status changes.
+
+### Notification Signature Verification
+
+All incoming notifications must be verified using SHA512 signature:
+
+```go
+payload := MidtransNotificationPayload{
+    OrderID:       "ORDER-123",
+    StatusCode:    "200",
+    GrossAmount:   "50000",
+    SignatureKey:  "received_signature",
+}
+
+err := midtransService.VerifyNotificationSignature(payload)
+```
+
+The signature is computed as:
+```
+SHA512(order_id + status_code + gross_amount + server_key)
+```
+
+See implementation in `/workspace/source/pkg/payment/midtrans.go:71`.
+
+### Notification Payload
+
+Expect the following JSON structure:
+
+```json
+{
+  "transaction_time": "2026-03-03 12:00:00",
+  "transaction_status": "settlement",
+  "transaction_id": "abc123",
+  "status_message": "Success",
+  "status_code": "200",
+  "signature_key": "computed_signature",
+  "payment_type": "gopay",
+  "order_id": "ORDER-123",
+  "merchant_id": "M123456",
+  "gross_amount": "50000.00",
+  "fraud_status": "accept",
+  "currency": "IDR"
+}
+```
+
+<Warning>
+Always verify the signature before processing notifications to prevent fraud. Invalid signatures indicate potential tampering.
+</Warning>
+
+## Production Configuration
+
+When deploying to production:
+
+1. **Update credentials**:
+   ```bash
+   MIDTRANS_SERVER_KEY=your_production_server_key
+   MIDTRANS_IS_PROD=true
+   ```
+
+2. **Configure notification URL** in Midtrans Dashboard:
+   - Go to **Settings** > **Configuration**
+   - Set **Payment Notification URL** to your webhook endpoint
+   - Example: `https://yourdomain.com/api/midtrans/notification`
+
+3. **Test thoroughly** in Sandbox before switching to production
+
+## Troubleshooting
+
+### Connection Errors
+
+Ensure your server can reach Midtrans API endpoints:
+- Sandbox: `api.sandbox.midtrans.com`
+- Production: `api.midtrans.com`
+
+### Invalid Signature
+
+If signature verification fails:
+1. Verify your `MIDTRANS_SERVER_KEY` is correct
+2. Check that gross_amount includes decimals (e.g., "50000.00")
+3. Ensure no extra whitespace in environment variables
+
+### Transaction Expired
+
+QRIS codes expire after 15 minutes by default. Implement auto-cancellation for expired orders.
+
+## API Reference
+
+The `IMidtrans` interface provides:
+
+- `CreateQRISCharge(orderID string, amount int64)` - Generate QRIS payment
+- `GetQRISCharge(orderID string)` - Check transaction status
+- `CancelTransaction(orderID string)` - Cancel pending transaction
+- `VerifyNotificationSignature(payload)` - Verify webhook signature
+
+See full implementation in `/workspace/source/pkg/payment/midtrans.go`.

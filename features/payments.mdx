@@ -1,0 +1,483 @@
+---
+title: Payments
+description: Multi-payment method support with Midtrans QRIS/GoPay integration and manual payment processing
+---
+
+## Overview
+
+POS Kasir supports multiple payment methods including cash payments and digital payments through Midtrans integration (QRIS and GoPay). The system handles payment processing, webhook notifications, and change calculation.
+
+## Payment Methods
+
+### List Payment Methods
+
+Retrieve all available payment methods.
+
+**Endpoint:** `GET /payment-methods`
+
+**Required Role:** Admin, Manager, Cashier
+
+```go title="internal/payment_methods/handler.go:23-44"
+func (h *PaymentMethodHandler) ListPaymentMethodsHandler(c fiber.Ctx) error {
+    methods, err := h.service.ListPaymentMethods(c.RequestCtx())
+    if err != nil {
+        h.log.Error("Failed to get payment methods from service", "error", err)
+        return c.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+            Message: "Failed to retrieve payment methods"
+        })
+    }
+
+    return c.Status(fiber.StatusOK).JSON(common.SuccessResponse{
+        Message: "Payment methods retrieved successfully",
+        Data:    methods,
+    })
+}
+```
+
+**Response:**
+```json
+{
+  "message": "Payment methods retrieved successfully",
+  "data": [
+    {
+      "id": 1,
+      "name": "Cash",
+      "type": "manual",
+      "is_active": true
+    },
+    {
+      "id": 2,
+      "name": "QRIS",
+      "type": "gateway",
+      "is_active": true
+    },
+    {
+      "id": 3,
+      "name": "GoPay",
+      "type": "gateway",
+      "is_active": true
+    }
+  ]
+}
+```
+
+## Manual Payment (Cash)
+
+### Confirm Manual Payment
+
+Process cash payment and complete the order.
+
+**Endpoint:** `POST /orders/{id}/pay/manual`
+
+**Required Role:** Admin, Manager, Cashier
+
+```go title="internal/orders/handler.go:152-207"
+func (h *OrderHandler) ConfirmManualPaymentHandler(c fiber.Ctx) error {
+    orderID, err := fiber.Convert(c.Params("id"), uuid.Parse)
+    if err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid order ID format"
+        })
+    }
+
+    var req ConfirmManualPaymentRequest
+    if err := c.Bind().Body(&req); err != nil {
+        var ve *validator.ValidationErrors
+        if errors.As(err, &ve) {
+            return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+                Message: "Validation failed",
+                Error:   ve.Error(),
+                Data: map[string]interface{}{
+                    "errors": ve.Errors,
+                },
+            })
+        }
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid request body"
+        })
+    }
+
+    orderResponse, err := h.orderService.ConfirmManualPayment(c.RequestCtx(), orderID, req)
+    if err != nil {
+        if errors.Is(err, common.ErrNotFound) {
+            return c.Status(fiber.StatusNotFound).JSON(common.ErrorResponse{
+                Message: "Order not found"
+            })
+        }
+        if errors.Is(err, common.ErrOrderNotModifiable) {
+            return c.Status(fiber.StatusConflict).JSON(common.ErrorResponse{
+                Message: "Order cannot be processed", 
+                Error:   "Order might have been paid or cancelled."
+            })
+        }
+        return c.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+            Message: "Failed to complete payment"
+        })
+    }
+
+    return c.Status(fiber.StatusOK).JSON(common.SuccessResponse{
+        Message: "Payment completed successfully",
+        Data:    orderResponse,
+    })
+}
+```
+
+**Request Body:**
+```json
+{
+  "payment_method_id": 1,
+  "cash_received": 100000
+}
+```
+
+**Response:**
+```json
+{
+  "message": "Payment completed successfully",
+  "data": {
+    "id": "880e8400-e29b-41d4-a716-446655440003",
+    "status": "paid",
+    "net_total": 75000,
+    "payment_method_id": 1,
+    "cash_received": 100000,
+    "change_due": 25000,
+    "created_at": "2024-03-03T10:00:00Z",
+    "updated_at": "2024-03-03T10:05:00Z"
+  }
+}
+```
+
+### Change Calculation
+
+The system automatically calculates change:
+- **Cash Received:** Amount given by customer
+- **Net Total:** Final order amount after discounts
+- **Change Due:** Cash Received - Net Total
+
+Example:
+```
+Net Total: IDR 75,000
+Cash Received: IDR 100,000
+Change Due: IDR 25,000
+```
+
+## Digital Payment (Midtrans)
+
+### Initiate Midtrans Payment
+
+Create a QRIS or GoPay payment session.
+
+**Endpoint:** `POST /orders/{id}/pay/midtrans`
+
+**Required Role:** Admin, Manager, Cashier
+
+```go title="internal/orders/handler.go:460-494"
+func (h *OrderHandler) InitiateMidtransPaymentHandler(c fiber.Ctx) error {
+    orderID, err := fiber.Convert(c.Params("id"), uuid.Parse)
+    if err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid order ID format"
+        })
+    }
+
+    qrisResponse, err := h.orderService.InitiateMidtransPayment(c.RequestCtx(), orderID)
+    if err != nil {
+        if errors.Is(err, common.ErrNotFound) {
+            return c.Status(fiber.StatusNotFound).JSON(common.ErrorResponse{
+                Message: "Order not found"
+            })
+        }
+        return c.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+            Message: "Failed to process payment: " + err.Error()
+        })
+    }
+
+    return c.Status(fiber.StatusOK).JSON(common.SuccessResponse{
+        Message: "QRIS payment initiated successfully",
+        Data:    qrisResponse,
+    })
+}
+```
+
+**Response:**
+```json
+{
+  "message": "QRIS payment initiated successfully",
+  "data": {
+    "order_id": "ORDER-2024-03-03-001",
+    "transaction_id": "550e8400-e29b-41d4-a716-446655440000",
+    "gross_amount": "75000",
+    "qr_string": "00020101021126660014ID.CO.QRIS.WWW0118...",
+    "expiry_time": "2024-03-03 10:15:00",
+    "actions": [
+      {
+        "name": "generate-qr-code",
+        "method": "GET",
+        "url": "https://api.midtrans.com/v2/qris/550e8400-e29b-41d4-a716-446655440000/qr-code"
+      }
+    ]
+  }
+}
+```
+
+### Payment Flow
+
+1. **Initiate Payment**
+   - Call `/orders/{id}/pay/midtrans`
+   - Receive QR code string and transaction ID
+   - Display QR code to customer
+
+2. **Customer Scans QR**
+   - Customer scans QR with mobile banking app
+   - Completes payment in their app
+   - Midtrans processes the transaction
+
+3. **Receive Webhook**
+   - Midtrans sends notification to webhook endpoint
+   - System updates order status to `paid`
+   - Order is finalized
+
+### Midtrans Webhook
+
+Midtrans sends payment notifications to this endpoint.
+
+**Endpoint:** `POST /orders/webhook/midtrans`
+
+**Required Role:** Public (No authentication)
+
+```go title="internal/orders/handler.go:496-524"
+func (h *OrderHandler) MidtransNotificationHandler(c fiber.Ctx) error {
+    var payload payment.MidtransNotificationPayload
+    if err := c.Bind().Body(&payload); err != nil {
+        h.log.Warnf("Cannot parse Midtrans notification body", "error", err)
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid notification format"
+        })
+    }
+
+    err := h.orderService.HandleMidtransNotification(c.RequestCtx(), payload)
+    if err != nil {
+        h.log.Errorf("Error handling Midtrans notification", "error", err, "orderID", payload.OrderID)
+        return c.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+            Message: "Failed to handle notification"
+        })
+    }
+
+    h.log.Infof("Successfully handled Midtrans notification", "orderID", payload.OrderID, "status", payload.TransactionStatus)
+    return c.Status(fiber.StatusOK).JSON(common.SuccessResponse{
+        Message: "Notification received successfully"
+    })
+}
+```
+
+**Midtrans Notification Payload:**
+```json
+{
+  "order_id": "ORDER-2024-03-03-001",
+  "transaction_id": "550e8400-e29b-41d4-a716-446655440000",
+  "transaction_status": "settlement",
+  "transaction_time": "2024-03-03 10:05:30",
+  "payment_type": "qris",
+  "gross_amount": "75000.00",
+  "signature_key": "abc123..."
+}
+```
+
+### Transaction Statuses
+
+Midtrans sends different transaction statuses:
+
+- **pending** - Payment initiated, awaiting customer action
+- **settlement** - Payment successful and settled
+- **capture** - Card payment captured (needs manual approval for some cases)
+- **deny** - Payment rejected by bank/issuer
+- **cancel** - Transaction cancelled
+- **expire** - Transaction expired (customer didn't pay in time)
+- **refund** - Payment refunded
+
+## Payment Response Structure
+
+```go title="internal/orders/dto.go:109-122"
+type MidtransPaymentResponse struct {
+    OrderID       string          `json:"order_id"`
+    TransactionID string          `json:"transaction_id"`
+    GrossAmount   string          `json:"gross_amount"`
+    QRString      string          `json:"qr_string"`
+    ExpiryTime    string          `json:"expiry_time"`
+    Actions       []PaymentAction `json:"actions"`
+}
+
+type PaymentAction struct {
+    Name   string `json:"name"`
+    Method string `json:"method"`
+    URL    string `json:"url"`
+}
+```
+
+## Payment Request DTOs
+
+```go title="internal/orders/dto.go:49-52"
+type ConfirmManualPaymentRequest struct {
+    PaymentMethodID int32 `json:"payment_method_id" validate:"required,gt=0"`
+    CashReceived    int64 `json:"cash_received" validate:"omitempty,gte=0"`
+}
+```
+
+## Integration with Orders
+
+Payment information is included in order responses:
+
+```json
+{
+  "id": "880e8400-e29b-41d4-a716-446655440003",
+  "status": "paid",
+  "gross_total": 80000,
+  "discount_amount": 5000,
+  "net_total": 75000,
+  "payment_method_id": 2,
+  "payment_gateway_reference": "550e8400-e29b-41d4-a716-446655440000",
+  "cash_received": null,
+  "change_due": null
+}
+```
+
+**Field Explanations:**
+- **gross_total** - Total before discounts
+- **discount_amount** - Total discount applied
+- **net_total** - Final amount to pay
+- **payment_method_id** - Payment method used (1=Cash, 2=QRIS, etc.)
+- **payment_gateway_reference** - Midtrans transaction ID (for digital payments)
+- **cash_received** - Amount received (for cash payments)
+- **change_due** - Change to return (for cash payments)
+
+## Workflow Examples
+
+### Cash Payment Flow
+
+```
+1. Create Order
+   POST /orders
+   → Order created with status: open
+
+2. Update to Served
+   POST /orders/{id}/update-status
+   { "status": "served" }
+
+3. Process Cash Payment
+   POST /orders/{id}/pay/manual
+   {
+     "payment_method_id": 1,
+     "cash_received": 100000
+   }
+   → Order status: paid
+   → Change due: 25000
+```
+
+### QRIS Payment Flow
+
+```
+1. Create Order
+   POST /orders
+   → Order created with status: open
+
+2. Update to Served
+   POST /orders/{id}/update-status
+   { "status": "served" }
+
+3. Initiate QRIS Payment
+   POST /orders/{id}/pay/midtrans
+   → Returns QR code and transaction ID
+
+4. Display QR Code
+   → Customer scans and pays
+
+5. Receive Webhook
+   POST /orders/webhook/midtrans (from Midtrans)
+   → System updates order status to: paid
+```
+
+## Security Considerations
+
+### Webhook Signature Verification
+
+Always verify Midtrans webhook signatures to prevent fraudulent notifications:
+
+```go
+// Verify signature
+expectedSignature := GenerateSignature(orderID, statusCode, grossAmount, serverKey)
+if payload.SignatureKey != expectedSignature {
+    return ErrInvalidSignature
+}
+```
+
+### Payment Idempotency
+
+The system handles duplicate webhook notifications gracefully:
+- Check if order is already paid before processing
+- Return success for duplicate notifications
+- Log all webhook attempts for audit
+
+### Order State Validation
+
+Before processing payment:
+- Verify order exists and is not cancelled
+- Ensure order is not already paid
+- Validate payment amount matches order total
+
+## Best Practices
+
+1. **Cash Validation** - Always validate cash_received >= net_total
+2. **Change Calculation** - Display change amount prominently to cashier
+3. **QR Code Timeout** - QRIS codes typically expire in 15 minutes
+4. **Webhook Retry** - Midtrans retries webhooks up to 5 times if endpoint fails
+5. **Payment Status** - Poll order status for real-time payment updates
+6. **Receipt Generation** - Generate receipt immediately after payment confirmation
+7. **Refund Handling** - Implement refund workflow for cancelled paid orders
+8. **Multi-Payment** - Consider splitting payments across multiple methods (future feature)
+
+## Error Handling
+
+### Common Payment Errors
+
+- **ErrOrderNotModifiable** - Order already paid or cancelled
+- **ErrInsufficientCash** - Cash received less than net total
+- **ErrPaymentMethodInactive** - Selected payment method is disabled
+- **ErrMidtransTimeout** - Payment gateway timeout
+- **ErrInvalidSignature** - Webhook signature verification failed
+
+### Error Response Example
+
+```json
+{
+  "message": "Failed to complete payment",
+  "error": "Order cannot be processed",
+  "data": {
+    "reason": "Order might have been paid or cancelled"
+  }
+}
+```
+
+## Testing
+
+### Midtrans Sandbox
+
+Use Midtrans sandbox environment for testing:
+- Sandbox URL: `https://api.sandbox.midtrans.com`
+- Test QR codes that simulate successful/failed payments
+- Webhook simulator in dashboard
+
+### Test Payment Scenarios
+
+1. **Successful Cash Payment**
+   - Exact amount
+   - Over payment (with change)
+
+2. **Successful QRIS Payment**
+   - Immediate settlement
+   - Delayed settlement
+
+3. **Failed Scenarios**
+   - Insufficient cash
+   - Expired QRIS
+   - Cancelled payment
+   - Duplicate payment attempt

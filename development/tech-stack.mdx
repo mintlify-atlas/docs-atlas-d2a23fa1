@@ -1,0 +1,589 @@
+---
+title: Technology Stack
+description: Complete breakdown of technologies, frameworks, and tools used in POS Kasir
+---
+
+## Overview
+
+POS Kasir leverages modern, production-ready technologies to deliver a high-performance, type-safe, and scalable Point of Sales system.
+
+## Backend Stack
+
+### Core Framework
+
+#### Go (Golang) 1.25.0
+**Why Go?**
+- Excellent performance and concurrency
+- Strong type system
+- Fast compilation
+- Simple deployment (single binary)
+- Great standard library
+
+**Module**: `POS-kasir` (from `go.mod:1`)
+
+#### Fiber v3.0.0
+**Web Framework** - `github.com/gofiber/fiber/v3`
+
+- **Express-inspired** API for Go
+- **Fastest** Go web framework (built on fasthttp)
+- Rich middleware ecosystem
+- Built-in WebSocket support
+- Easy error handling
+
+**Usage in project** (`server/server.go:112-116`):
+```go
+fiberApp := fiber.New(fiber.Config{
+    AppName:         cfg.Server.AppName,
+    ErrorHandler:    CustomErrorHandler(log),
+    StructValidator: val,
+})
+```
+
+**Key Features Used**:
+- Custom error handler
+- CORS middleware (`server/server.go:247-254`)
+- Logger middleware
+- Panic recovery
+- Request validation
+
+### Database Layer
+
+#### PostgreSQL
+**Primary Database**
+
+- **ACID compliance** for data integrity
+- **JSONB support** for flexible activity logs
+- **Full-text search** capabilities
+- **Robust indexes** for performance
+- **Triggers** for automatic timestamp updates
+
+**Connection**: pgx/v5 (PostgreSQL driver)
+- `github.com/jackc/pgx/v5` v5.7.5
+- High-performance native Go driver
+- Connection pooling
+- Prepared statement caching
+
+#### sqlc - Type-Safe SQL
+**Query Generator** - `sqlc.dev`
+
+**What is sqlc?**
+- Generates **type-safe** Go code from SQL
+- Catches SQL errors at **compile time**
+- No runtime reflection
+- Full IDE autocomplete support
+
+**Configuration**: `sqlc/sqlc.yaml`
+
+**Example Generated Code**:
+```go
+// From SQL query:
+// -- name: GetUserByEmail :one
+// SELECT * FROM users WHERE email = $1 LIMIT 1;
+
+// Generated Go method:
+func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error)
+```
+
+**Benefits**:
+- No ORM overhead
+- Write SQL, get Go
+- Type-safe parameters and results
+- Transaction support via Store pattern
+
+#### golang-migrate
+**Migration Tool** - `github.com/golang-migrate/migrate/v4` v4.19.0
+
+- Version-controlled schema changes
+- Up/down migration support
+- Embedded migrations in binary
+- CLI and programmatic usage
+
+**Migration Location**: `sqlc/migrations/`
+**Makefile Commands**:
+```bash
+make migrate-up      # Apply all migrations
+make migrate-down    # Rollback all migrations
+make migrate-create name=<name>  # Create new migration
+```
+
+### Authentication & Security
+
+#### JWT (JSON Web Tokens)
+**Library**: `github.com/golang-jwt/jwt/v5` v5.2.2
+
+- Stateless authentication
+- Access + Refresh token pattern
+- Role-based claims
+- Token expiration and validation
+
+**Implementation**: `pkg/utils/jwt.go`
+
+**Token Structure**:
+```go
+type Claims struct {
+    UserID   string    `json:"user_id"`
+    Username string    `json:"username"`
+    Email    string    `json:"email"`
+    Role     string    `json:"role"`
+    jwt.RegisteredClaims
+}
+```
+
+#### bcrypt Password Hashing
+**Library**: `golang.org/x/crypto/bcrypt` v0.47.0
+
+- Secure password hashing
+- Automatic salt generation
+- Configurable cost factor
+
+### Validation
+
+#### go-playground/validator
+**Library**: `github.com/go-playground/validator/v10` v10.27.0
+
+**Features**:
+- Struct tag-based validation
+- Custom validators
+- Nested struct validation
+- Cross-field validation
+
+**Example Usage**:
+```go
+type LoginRequest struct {
+    Email    string `json:"email" validate:"required,email"`
+    Password string `json:"password" validate:"required,min=8"`
+}
+```
+
+**Integration**: `pkg/validator/validator.go`
+
+### External Integrations
+
+#### Midtrans Payment Gateway
+**Library**: `github.com/midtrans/midtrans-go` v1.3.8
+
+**Payment Methods Supported**:
+- Credit/Debit Cards (Visa, Mastercard)
+- E-wallets (GoPay, OVO, DANA, ShopeePay)
+- Bank transfers
+- QR codes
+
+**Implementation**: `pkg/payment/midtrans.go`
+
+**Features Used**:
+- Snap Token generation
+- Webhook notifications
+- Payment status tracking
+
+#### Cloudflare R2 (S3-Compatible Storage)
+**Library**: `github.com/minio/minio-go/v7` v7.0.94
+
+**Use Cases**:
+- Product images
+- Product option images
+- User avatars
+- App logos
+
+**Benefits**:
+- No egress fees
+- S3 API compatibility
+- Global CDN distribution
+- High availability
+
+**Implementation**: `pkg/cloudflare-r2/r2.go`
+
+### Logging
+
+#### Logrus
+**Library**: `github.com/sirupsen/logrus` v1.9.3
+
+**Features**:
+- Structured logging
+- Multiple log levels (Debug, Info, Warn, Error, Fatal)
+- JSON output for production
+- Contextual fields
+
+**Implementation**: `pkg/logger/logger.go`
+
+**Example**:
+```go
+logger.WithFields(logrus.Fields{
+    "user_id": userID,
+    "action":  "login",
+}).Info("User logged in successfully")
+```
+
+### API Documentation
+
+#### Swagger/OpenAPI
+**Library**: `github.com/swaggo/swag` v1.16.6
+
+**Auto-generates**:
+- Interactive API documentation
+- OpenAPI 3.0 specifications
+- API client code (for frontend)
+
+**Annotations Example**:
+```go
+// @Summary User login
+// @Description Authenticate user and return JWT tokens
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param request body LoginRequest true "Login credentials"
+// @Success 200 {object} LoginResponse
+// @Router /auth/login [post]
+```
+
+**Access**: `http://localhost:8080/swagger/index.html`
+
+**Generate Docs**:
+```bash
+make swag  # Generates Swagger docs and updates frontend API client
+```
+
+### Utilities
+
+#### UUID Generation
+**Library**: `github.com/google/uuid` v1.6.0
+
+- Unique identifiers for entities
+- Version 4 (random) UUIDs
+- Database-compatible
+
+#### Environment Variables
+**Library**: `github.com/joho/godotenv` v1.5.1
+
+- Load `.env` files
+- Development configuration
+- Falls back to system env vars in production
+
+### Testing
+
+#### Go Testing Frameworks
+
+**Testify**: `github.com/stretchr/testify` v1.11.1
+- Assertions: `assert.Equal(t, expected, actual)`
+- Mocking: `mock.Mock`
+- Test suites
+
+**gomock**: `go.uber.org/mock` v0.5.2
+- Interface mocking
+- Expectation-based testing
+- Auto-generated mocks
+
+**pgxmock**: `github.com/pashagolub/pgxmock/v4` v4.9.0
+- Mock PostgreSQL connections
+- Test database queries without real DB
+
+**Example Test**:
+```go
+func TestGetUserByEmail(t *testing.T) {
+    mock, err := pgxmock.NewConn()
+    require.NoError(t, err)
+    defer mock.Close(ctx)
+    
+    expected := User{ID: uuid.New(), Email: "test@example.com"}
+    mock.ExpectQuery("SELECT").WillReturnRows(
+        pgxmock.NewRows([]string{"id", "email"}).AddRow(expected.ID, expected.Email),
+    )
+    
+    repo := repository.New(mock)
+    user, err := repo.GetUserByEmail(ctx, "test@example.com")
+    
+    assert.NoError(t, err)
+    assert.Equal(t, expected.Email, user.Email)
+}
+```
+
+## Frontend Stack
+
+### Runtime & Package Manager
+
+#### Bun
+**All-in-one JavaScript Runtime**
+
+- **Fast** - 3x faster than Node.js
+- **Built-in** bundler, transpiler, package manager
+- **Drop-in** replacement for Node.js
+- Native TypeScript support
+
+**Scripts** (from `web/package.json:5-16`):
+```json
+{
+  "dev": "vite dev",
+  "build": "vite build && tsc --noEmit",
+  "api:gen": "openapi-generator-cli generate",
+  "rbac:gen": "bun run scripts/gen-rbac.ts"
+}
+```
+
+### Framework
+
+#### TanStack Start v1.132.0
+**Full-Stack React Framework**
+
+**Key Features**:
+- File-based routing
+- Server-side rendering (SSR)
+- Streaming SSR
+- Type-safe routing
+- Built on Vite
+
+**Related Packages**:
+- `@tanstack/react-router` v1.132.0 - Advanced routing
+- `@tanstack/router-plugin` v1.132.0 - Vite integration
+- `@tanstack/react-start` v1.132.0 - Full-stack features
+
+#### React 19.2.0
+**UI Library**
+
+**React 19 Features**:
+- Improved hydration
+- Better error handling
+- Enhanced server components
+- Optimized rendering
+
+### State Management
+
+#### TanStack Query v5.90.9
+**Data Fetching & State Management**
+
+**Features**:
+- Automatic caching
+- Background refetching
+- Request deduplication
+- Pagination & infinite scroll
+- Optimistic updates
+
+**Example**:
+```typescript
+const { data, isLoading } = useQuery({
+  queryKey: ['products'],
+  queryFn: () => productsApi.getProducts(),
+})
+```
+
+**DevTools**: `@tanstack/react-devtools` v0.7.0
+
+### Form Management
+
+#### React Hook Form v7.66.0
+**Performant Form Library**
+
+- Minimal re-renders
+- Schema-based validation
+- TypeScript support
+- Easy error handling
+
+#### Zod v4.1.12
+**Schema Validation**
+
+```typescript
+const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8),
+})
+
+type LoginForm = z.infer<typeof loginSchema>
+```
+
+**Integration**: `@tanstack/zod-form-adapter` v0.42.1
+
+### UI Component Libraries
+
+#### Shadcn UI
+**Component Collection**
+
+- **Radix UI primitives** - Accessible, unstyled components
+- **Tailwind CSS** - Utility-first styling
+- **Copy-paste components** - Full customization
+
+**Radix Components** (from `web/package.json:19-44`):
+- Accordion, Alert Dialog, Avatar
+- Checkbox, Dialog, Dropdown Menu
+- Popover, Select, Tabs, Tooltip
+- And 20+ more...
+
+#### Tailwind CSS v4.0.6
+**Utility-First CSS Framework**
+
+- Rapid UI development
+- Consistent design system
+- Optimized production builds
+- Dark mode support
+
+**Plugin**: `@tailwindcss/vite` v4.0.6
+
+#### Styling Utilities
+
+- **clsx** v2.1.1 - Conditional class names
+- **tailwind-merge** v3.0.2 - Merge Tailwind classes
+- **class-variance-authority** v0.7.1 - Component variants
+
+**Example**:
+```typescript
+import { cn } from '@/lib/utils'
+
+const buttonVariants = cva('px-4 py-2 rounded', {
+  variants: {
+    variant: {
+      primary: 'bg-blue-500 text-white',
+      secondary: 'bg-gray-200 text-black',
+    },
+  },
+})
+```
+
+### Internationalization
+
+#### i18next v25.8.0
+**i18n Framework**
+
+- Multi-language support (English, Indonesian)
+- Lazy loading of translations
+- Pluralization
+- Date/number formatting
+
+**React Integration**: `react-i18next` v16.5.3
+**Auto-detection**: `i18next-browser-languagedetector` v8.2.0
+
+### API Client
+
+#### Axios v1.13.2
+**HTTP Client**
+
+- Promise-based requests
+- Interceptors for auth
+- Request/response transformation
+- Timeout handling
+
+#### OpenAPI Generator
+**Package**: `@openapitools/openapi-generator-cli` v2.25.2
+
+**Auto-generates** from backend Swagger:
+- TypeScript API client
+- Type definitions
+- Request/response models
+
+**Command** (from `Makefile:60`):
+```bash
+make swag  # Updates Swagger and generates frontend API client
+```
+
+### Additional UI Libraries
+
+- **lucide-react** v0.553.0 - Icon library
+- **recharts** v2.15.4 - Charts and graphs
+- **date-fns** v4.1.0 - Date utilities
+- **react-day-picker** v9.11.1 - Date picker
+- **sonner** v2.0.7 - Toast notifications
+- **cmdk** v1.1.1 - Command palette
+- **vaul** v1.1.2 - Drawer component
+- **react-easy-crop** v5.5.6 - Image cropping
+
+### Build Tools
+
+#### Vite v7.1.7
+**Next-Generation Build Tool**
+
+- Lightning-fast HMR
+- Optimized production builds
+- Native ESM support
+- Plugin ecosystem
+
+**Plugins**:
+- `@vitejs/plugin-react` v5.0.4
+- `vite-tsconfig-paths` v5.1.4
+
+#### TypeScript v5.7.2
+**Type Safety**
+
+- Static type checking
+- Enhanced IDE support
+- Compile-time error detection
+
+### Testing (Frontend)
+
+- **Vitest** v3.0.5 - Vite-native test runner
+- **@testing-library/react** v16.2.0 - Component testing
+- **jsdom** v27.0.0 - DOM simulation
+
+## Development Tools
+
+### Code Quality
+
+- **Air** - Go hot reload
+- **ESLint** - JavaScript/TypeScript linting
+- **Prettier** - Code formatting
+
+### Container & Deployment
+
+#### Docker
+**Containerization**
+
+- Consistent development environment
+- Easy deployment
+- Isolated dependencies
+
+**Compose File**: `docker-compose.yml`
+
+#### Nitro (Latest)
+**Universal Server**
+
+- Deploy anywhere
+- Serverless support
+- API routes
+
+### Automation
+
+#### Makefile
+**Task Runner**
+
+Commands:
+```bash
+make migrate-up       # Run database migrations
+make migrate-create   # Create new migration
+make sqlc-generate    # Generate sqlc code
+make seed             # Seed database
+make swag             # Generate API docs
+make docker-be        # Start backend container
+```
+
+## Version Control & CI/CD
+
+### Git
+- Version control
+- Branch management
+- Collaboration
+
+### GitHub Actions (Recommended)
+- Automated testing
+- Deployment pipelines
+- Code quality checks
+
+## Summary
+
+### Backend Tech Highlights
+- **Go + Fiber** - High-performance API
+- **sqlc + PostgreSQL** - Type-safe database queries
+- **JWT + RBAC** - Secure authentication
+- **Midtrans + R2** - Payment & storage integrations
+
+### Frontend Tech Highlights
+- **TanStack Start** - Modern React framework
+- **TanStack Query** - Powerful data fetching
+- **Shadcn UI + Tailwind** - Beautiful, accessible UI
+- **Auto-generated API Client** - Type-safe backend communication
+
+### Development Experience
+- **Full type safety** across stack
+- **Hot reload** for rapid iteration
+- **Auto-generated code** reduces boilerplate
+- **Comprehensive testing** tools
+
+## Next Steps
+
+- [Architecture](/development/architecture) - System design and patterns
+- [Database Schema](/development/database-schema) - Complete schema documentation
+- [Contributing Guide](/development/contributing) - Start developing

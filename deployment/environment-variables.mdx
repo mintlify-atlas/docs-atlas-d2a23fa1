@@ -1,0 +1,730 @@
+---
+title: 'Environment Variables'
+description: 'Complete reference for all POS Kasir configuration variables'
+---
+
+## Overview
+
+POS Kasir uses environment variables for configuration. This page documents all available variables with their purpose, valid values, and recommendations.
+
+<Note>
+All configuration is read from `.env` files in the root directory for the backend and `web/.env` for the frontend.
+</Note>
+
+## Configuration File
+
+Create your configuration by copying the example:
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` with your specific values before running the application.
+
+## Server & Application Config
+
+Core application settings that control runtime behavior.
+
+<ParamField path="APP_ENV" type="string" default="development" required>
+  Application environment mode.
+  
+  **Valid values:**
+  - `development` - Development mode with debug features
+  - `production` - Production mode with optimizations
+  
+  **Example:**
+  ```bash
+  APP_ENV=production
+  ```
+</ParamField>
+
+<ParamField path="APP_NAME" type="string" default="POS-Kasir" required>
+  Application name used in logs and responses.
+  
+  **Example:**
+  ```bash
+  APP_NAME=POS-Kasir
+  ```
+</ParamField>
+
+<ParamField path="APP_PORT" type="integer" default="8080" required>
+  Port number for the backend server to listen on.
+  
+  **Example:**
+  ```bash
+  APP_PORT=8080
+  ```
+  
+  <Note>
+  When using Docker, this must match the internal port in `docker-compose.yml`.
+  </Note>
+</ParamField>
+
+<ParamField path="COOKIE_DOMAIN" type="string" default="" optional>
+  Domain for setting cookies. Leave empty for localhost.
+  
+  **Example:**
+  ```bash
+  # For production
+  COOKIE_DOMAIN=.yourdomain.com
+  
+  # For localhost (development)
+  COOKIE_DOMAIN=
+  ```
+  
+  <Warning>
+  Use a leading dot (`.yourdomain.com`) to allow cookies across subdomains.
+  </Warning>
+</ParamField>
+
+<ParamField path="WEB_FRONTEND_CROSS_ORIGIN" type="boolean" default="false" optional>
+  Enable CORS for frontend requests.
+  
+  **Valid values:**
+  - `true` - Allow cross-origin requests
+  - `false` - Restrict to same origin
+  
+  **Example:**
+  ```bash
+  WEB_FRONTEND_CROSS_ORIGIN=false
+  ```
+</ParamField>
+
+## Database Configuration
+
+PostgreSQL database connection settings.
+
+<ParamField path="DB_HOST" type="string" required>
+  PostgreSQL database host address.
+  
+  **Example:**
+  ```bash
+  # External database
+  DB_HOST=postgres.example.com
+  
+  # Docker service name
+  DB_HOST=postgres
+  
+  # Localhost
+  DB_HOST=localhost
+  ```
+</ParamField>
+
+<ParamField path="DB_PORT" type="integer" default="5432" required>
+  PostgreSQL database port.
+  
+  **Example:**
+  ```bash
+  DB_PORT=5432
+  ```
+</ParamField>
+
+<ParamField path="DB_USER" type="string" required>
+  Database username for authentication.
+  
+  **Example:**
+  ```bash
+  DB_USER=pos_kasir
+  ```
+</ParamField>
+
+<ParamField path="DB_PASSWORD" type="string" required>
+  Database password for authentication.
+  
+  **Example:**
+  ```bash
+  DB_PASSWORD=your-secure-password-here
+  ```
+  
+  <Warning>
+  Use a strong, randomly generated password in production. Never commit passwords to version control.
+  </Warning>
+</ParamField>
+
+<ParamField path="DB_NAME" type="string" required>
+  Name of the PostgreSQL database.
+  
+  **Example:**
+  ```bash
+  DB_NAME=pos_kasir
+  ```
+</ParamField>
+
+<ParamField path="DB_SSLMODE" type="string" default="disable" required>
+  SSL/TLS mode for database connections.
+  
+  **Valid values:**
+  - `disable` - No SSL (development only)
+  - `require` - Require SSL connection
+  - `verify-ca` - Verify certificate authority
+  - `verify-full` - Full certificate verification
+  
+  **Example:**
+  ```bash
+  # Development
+  DB_SSLMODE=disable
+  
+  # Production (recommended)
+  DB_SSLMODE=require
+  ```
+  
+  <Warning>
+  Always use `require` or higher in production environments.
+  </Warning>
+</ParamField>
+
+### Connection Pool Settings
+
+Optimize database performance with connection pooling.
+
+<ParamField path="DB_MAX_OPEN_CONNECTIONS" type="integer" default="10">
+  Maximum number of open database connections.
+  
+  **Recommendations:**
+  - Development: 10
+  - Production (small): 25
+  - Production (large): 50-100
+  
+  **Example:**
+  ```bash
+  DB_MAX_OPEN_CONNECTIONS=25
+  ```
+</ParamField>
+
+<ParamField path="DB_MAX_IDLE_CONNECTIONS" type="integer" default="2">
+  Maximum number of idle connections in the pool.
+  
+  **Recommendations:**
+  - Should be less than `DB_MAX_OPEN_CONNECTIONS`
+  - Typical value: 20-30% of max open connections
+  
+  **Example:**
+  ```bash
+  DB_MAX_IDLE_CONNECTIONS=5
+  ```
+</ParamField>
+
+<ParamField path="DB_MAX_LIFETIME_MINUTES" type="integer" default="10">
+  Maximum lifetime of a connection in minutes.
+  
+  **Recommendations:**
+  - Development: 10 minutes
+  - Production: 30-60 minutes
+  
+  **Example:**
+  ```bash
+  DB_MAX_LIFETIME_MINUTES=30
+  ```
+</ParamField>
+
+## Migration Settings
+
+Database schema migration configuration.
+
+<ParamField path="AUTO_MIGRATE" type="boolean" default="false">
+  Automatically run database migrations on startup.
+  
+  **Valid values:**
+  - `true` - Auto-run migrations (convenient for development)
+  - `false` - Manual migration (recommended for production)
+  
+  **Example:**
+  ```bash
+  # Development
+  AUTO_MIGRATE=true
+  
+  # Production (run migrations manually)
+  AUTO_MIGRATE=false
+  ```
+  
+  <Warning>
+  In production, set to `false` and run migrations manually to maintain control over schema changes.
+  </Warning>
+</ParamField>
+
+<ParamField path="MIGRATIONS_PATH" type="string" default="./sqlc/migrations">
+  Path to database migration files.
+  
+  **Example:**
+  ```bash
+  MIGRATIONS_PATH=./sqlc/migrations
+  ```
+</ParamField>
+
+## Logger Configuration
+
+Application logging settings.
+
+<ParamField path="LOG_LEVEL" type="string" default="info">
+  Minimum log level to output.
+  
+  **Valid values (in order of severity):**
+  - `debug` - Detailed debugging information
+  - `info` - General informational messages
+  - `warn` - Warning messages
+  - `error` - Error messages only
+  
+  **Example:**
+  ```bash
+  # Development
+  LOG_LEVEL=debug
+  
+  # Production
+  LOG_LEVEL=info
+  ```
+</ParamField>
+
+<ParamField path="LOG_JSON_FORMAT" type="boolean" default="false">
+  Output logs in JSON format for log aggregation systems.
+  
+  **Valid values:**
+  - `true` - JSON format (recommended for production)
+  - `false` - Human-readable format (better for development)
+  
+  **Example:**
+  ```bash
+  # Development
+  LOG_JSON_FORMAT=false
+  
+  # Production (for log aggregation)
+  LOG_JSON_FORMAT=true
+  ```
+</ParamField>
+
+## JWT Authentication
+
+JSON Web Token configuration for user authentication.
+
+<ParamField path="JWT_SECRET" type="string" required>
+  Secret key for signing JWT tokens.
+  
+  **Requirements:**
+  - Minimum 32 characters
+  - Use random, cryptographically secure string
+  - Never reuse across environments
+  
+  **Example:**
+  ```bash
+  JWT_SECRET=your-very-long-random-secret-key-here-min-32-chars
+  ```
+  
+  **Generate a secure secret:**
+  ```bash
+  openssl rand -base64 32
+  ```
+  
+  <Warning>
+  Never commit this value to version control. Use environment variable injection in production.
+  </Warning>
+</ParamField>
+
+<ParamField path="JWT_DURATION_HOURS" type="integer" default="24">
+  Token expiration time in hours.
+  
+  **Recommendations:**
+  - Web app: 24 hours
+  - Mobile app: 168 hours (7 days)
+  - API clients: 1 hour with refresh tokens
+  
+  **Example:**
+  ```bash
+  JWT_DURATION_HOURS=24
+  ```
+</ParamField>
+
+<ParamField path="JWT_ISSUER" type="string" default="poskasir">
+  JWT issuer claim for token validation.
+  
+  **Example:**
+  ```bash
+  JWT_ISSUER=poskasir
+  ```
+</ParamField>
+
+## Midtrans Payment Gateway
+
+Configuration for Midtrans payment processing integration.
+
+<ParamField path="MIDTRANS_SERVER_KEY" type="string" required>
+  Midtrans server key for API authentication.
+  
+  **Where to find:**
+  1. Login to Midtrans Dashboard
+  2. Go to Settings > Access Keys
+  3. Copy Server Key (Sandbox or Production)
+  
+  **Example:**
+  ```bash
+  # Sandbox
+  MIDTRANS_SERVER_KEY=SB-Mid-server-xxxxxxxxxxxxxxxx
+  
+  # Production
+  MIDTRANS_SERVER_KEY=Mid-server-xxxxxxxxxxxxxxxx
+  ```
+  
+  <Warning>
+  Keep this key secret. Never expose in client-side code or commit to version control.
+  </Warning>
+</ParamField>
+
+<ParamField path="MIDTRANS_IS_PROD" type="boolean" default="false">
+  Use Midtrans production environment.
+  
+  **Valid values:**
+  - `true` - Production mode (real transactions)
+  - `false` - Sandbox mode (testing)
+  
+  **Example:**
+  ```bash
+  # Development/Testing
+  MIDTRANS_IS_PROD=false
+  
+  # Production
+  MIDTRANS_IS_PROD=true
+  ```
+  
+  <Note>
+  Always test thoroughly in sandbox mode before enabling production.
+  </Note>
+</ParamField>
+
+## Cloudflare R2 Storage
+
+Cloudflare R2 object storage configuration for file uploads.
+
+<ParamField path="R2_ACCOUNT_ID" type="string" required>
+  Cloudflare account ID.
+  
+  **Where to find:**
+  1. Login to Cloudflare Dashboard
+  2. Go to R2 > Overview
+  3. Copy Account ID
+  
+  **Example:**
+  ```bash
+  R2_ACCOUNT_ID=abc123def456ghi789
+  ```
+</ParamField>
+
+<ParamField path="R2_ACCESS_KEY" type="string" required>
+  R2 API access key ID.
+  
+  **Where to find:**
+  1. Cloudflare Dashboard > R2
+  2. Manage R2 API Tokens
+  3. Create API token or use existing
+  4. Copy Access Key ID
+  
+  **Example:**
+  ```bash
+  R2_ACCESS_KEY=a1b2c3d4e5f6g7h8i9j0
+  ```
+</ParamField>
+
+<ParamField path="R2_SECRET_KEY" type="string" required>
+  R2 API secret access key.
+  
+  **Where to find:**
+  - Shown only once when creating API token
+  - Cannot be retrieved later - must regenerate if lost
+  
+  **Example:**
+  ```bash
+  R2_SECRET_KEY=your-secret-access-key-here
+  ```
+  
+  <Warning>
+  Store this securely. It's only shown once during token creation.
+  </Warning>
+</ParamField>
+
+<ParamField path="R2_BUCKET" type="string" default="pos-kasir" required>
+  R2 bucket name for storing files.
+  
+  **Example:**
+  ```bash
+  # Development
+  R2_BUCKET=pos-kasir-dev
+  
+  # Production
+  R2_BUCKET=pos-kasir-prod
+  ```
+  
+  <Note>
+  Use separate buckets for different environments to prevent data mixing.
+  </Note>
+</ParamField>
+
+<ParamField path="R2_PUBLIC_DOMAIN" type="string" required>
+  Public domain for accessing R2 files.
+  
+  **Setup:**
+  1. Create R2 bucket
+  2. Enable public access or custom domain
+  3. Configure DNS (if using custom domain)
+  
+  **Example:**
+  ```bash
+  # R2 default domain
+  R2_PUBLIC_DOMAIN=https://pub-xxxxx.r2.dev
+  
+  # Custom domain
+  R2_PUBLIC_DOMAIN=https://cdn.yourdomain.com
+  ```
+</ParamField>
+
+<ParamField path="R2_EXPIRY_SECONDS" type="integer" default="3600">
+  Pre-signed URL expiration time in seconds.
+  
+  **Recommendations:**
+  - Public files: 3600 (1 hour)
+  - Private files: 900 (15 minutes)
+  - Temporary uploads: 300 (5 minutes)
+  
+  **Example:**
+  ```bash
+  R2_EXPIRY_SECONDS=3600
+  ```
+</ParamField>
+
+## Environment-Specific Examples
+
+### Development Environment
+
+```bash
+# Server & Application
+APP_ENV=development
+APP_NAME=POS-Kasir
+APP_PORT=8080
+COOKIE_DOMAIN=
+WEB_FRONTEND_CROSS_ORIGIN=false
+
+# Database (local)
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=postgres
+DB_PASSWORD=postgres
+DB_NAME=pos_kasir_dev
+DB_SSLMODE=disable
+DB_MAX_OPEN_CONNECTIONS=10
+DB_MAX_IDLE_CONNECTIONS=2
+DB_MAX_LIFETIME_MINUTES=10
+
+# Migration
+AUTO_MIGRATE=true
+MIGRATIONS_PATH=./sqlc/migrations
+
+# Logger
+LOG_LEVEL=debug
+LOG_JSON_FORMAT=false
+
+# JWT (use different secret than production)
+JWT_SECRET=dev-secret-key-min-32-characters-long
+JWT_DURATION_HOURS=24
+JWT_ISSUER=poskasir
+
+# Midtrans (sandbox)
+MIDTRANS_SERVER_KEY=SB-Mid-server-xxxxxxxxxxxxxxxx
+MIDTRANS_IS_PROD=false
+
+# R2 (dev bucket)
+R2_ACCOUNT_ID=your-account-id
+R2_ACCESS_KEY=your-access-key
+R2_SECRET_KEY=your-secret-key
+R2_BUCKET=pos-kasir-dev
+R2_PUBLIC_DOMAIN=https://pub-xxxxx.r2.dev
+R2_EXPIRY_SECONDS=3600
+```
+
+### Production Environment
+
+```bash
+# Server & Application
+APP_ENV=production
+APP_NAME=POS-Kasir
+APP_PORT=8080
+COOKIE_DOMAIN=.yourdomain.com
+WEB_FRONTEND_CROSS_ORIGIN=false
+
+# Database (managed PostgreSQL)
+DB_HOST=prod-postgres.example.com
+DB_PORT=5432
+DB_USER=pos_kasir_prod
+DB_PASSWORD=STRONG_RANDOM_PASSWORD_HERE
+DB_NAME=pos_kasir_prod
+DB_SSLMODE=require
+DB_MAX_OPEN_CONNECTIONS=25
+DB_MAX_IDLE_CONNECTIONS=5
+DB_MAX_LIFETIME_MINUTES=30
+
+# Migration (manual in production)
+AUTO_MIGRATE=false
+MIGRATIONS_PATH=./sqlc/migrations
+
+# Logger (JSON for log aggregation)
+LOG_LEVEL=info
+LOG_JSON_FORMAT=true
+
+# JWT (strong random secret)
+JWT_SECRET=GENERATE_STRONG_RANDOM_SECRET_MIN_32_CHARS
+JWT_DURATION_HOURS=24
+JWT_ISSUER=poskasir
+
+# Midtrans (production)
+MIDTRANS_SERVER_KEY=Mid-server-PRODUCTION_KEY_HERE
+MIDTRANS_IS_PROD=true
+
+# R2 (production bucket)
+R2_ACCOUNT_ID=your-account-id
+R2_ACCESS_KEY=your-prod-access-key
+R2_SECRET_KEY=your-prod-secret-key
+R2_BUCKET=pos-kasir-prod
+R2_PUBLIC_DOMAIN=https://cdn.yourdomain.com
+R2_EXPIRY_SECONDS=3600
+```
+
+## Security Best Practices
+
+<Warning>
+Follow these security practices for environment variables:
+</Warning>
+
+### 1. Never Commit Secrets
+
+Add `.env` to `.gitignore`:
+
+```bash
+# .gitignore
+.env
+.env.local
+.env.production
+*.env
+```
+
+### 2. Use Strong Random Values
+
+Generate secure secrets:
+
+```bash
+# JWT secret
+openssl rand -base64 32
+
+# General secrets
+openssl rand -hex 32
+
+# UUID-based
+uuidgen
+```
+
+### 3. Environment Separation
+
+Use different values for each environment:
+
+- Development: `.env.development`
+- Staging: `.env.staging`
+- Production: `.env.production`
+
+### 4. Secrets Management
+
+In production, use secrets management services:
+
+- **AWS**: AWS Secrets Manager
+- **Google Cloud**: Secret Manager
+- **Azure**: Key Vault
+- **HashiCorp**: Vault
+- **Docker**: Docker Secrets
+- **Kubernetes**: Kubernetes Secrets
+
+### 5. Access Control
+
+Restrict file permissions:
+
+```bash
+chmod 600 .env
+chown $USER:$USER .env
+```
+
+### 6. Audit Regularly
+
+- Review access to secrets monthly
+- Rotate credentials quarterly
+- Monitor for unauthorized access
+- Use different credentials per environment
+
+## Validation
+
+Validate your configuration before deployment:
+
+```bash
+# Check required variables are set
+grep -v '^#' .env | grep -v '^$' | while read line; do
+  key=$(echo $line | cut -d'=' -f1)
+  value=$(echo $line | cut -d'=' -f2-)
+  if [ -z "$value" ]; then
+    echo "Missing value for: $key"
+  fi
+done
+
+# Test database connection
+psql "postgresql://$DB_USER:$DB_PASSWORD@$DB_HOST:$DB_PORT/$DB_NAME?sslmode=$DB_SSLMODE"
+
+# Test application startup
+docker-compose up --abort-on-container-exit
+```
+
+## Troubleshooting
+
+### Variable Not Loading
+
+```bash
+# Verify .env file exists
+ls -la .env
+
+# Check file permissions
+ls -l .env
+
+# Verify variable syntax (no spaces around =)
+cat .env | grep -E '\s=\s'
+
+# Test loading
+set -a; source .env; set +a
+echo $APP_ENV
+```
+
+### Docker Not Reading .env
+
+```bash
+# Verify env_file path in docker-compose.yml
+cat docker-compose.yml | grep env_file
+
+# Rebuild containers
+docker-compose down
+docker-compose up -d --build
+
+# Check loaded variables
+docker-compose exec backend env
+```
+
+### Database Connection Fails
+
+```bash
+# Test connection manually
+telnet $DB_HOST $DB_PORT
+
+# Verify SSL mode
+psql "postgresql://$DB_USER:$DB_PASSWORD@$DB_HOST:$DB_PORT/$DB_NAME?sslmode=require"
+
+# Check firewall rules
+sudo ufw status
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Docker Deployment" icon="docker" href="/deployment/docker">
+    Deploy using Docker Compose
+  </Card>
+  <Card title="Production Guide" icon="rocket" href="/deployment/production">
+    Production deployment best practices
+  </Card>
+</CardGroup>

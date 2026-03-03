@@ -1,0 +1,439 @@
+---
+title: 'Installation'
+description: 'Detailed installation guide for POS Kasir'
+icon: 'download'
+---
+
+This guide covers the complete installation process for POS Kasir, including prerequisites, setup options, and verification steps.
+
+## System Requirements
+
+### Backend Requirements
+
+- **Go**: Version 1.22 or higher
+- **PostgreSQL**: 12 or higher
+- **golang-migrate**: For database migrations
+- **sqlc**: For type-safe SQL code generation (development only)
+
+### Frontend Requirements
+
+- **Bun**: Version 1.0 or higher
+- **Node.js**: Compatible with Bun runtime
+
+### Infrastructure
+
+- **Docker**: 20.10 or higher
+- **Docker Compose**: v2.0 or higher
+
+## Installation Methods
+
+<Tabs>
+  <Tab title="Docker (Recommended)">
+    ### Docker Installation
+    
+    Docker is the recommended method for running POS Kasir, as it handles all dependencies automatically.
+    
+    <Steps>
+      <Step title="Clone Repository">
+        ```bash
+        git clone https://github.com/agpprastyo/POS-kasir.git
+        cd POS-kasir
+        ```
+      </Step>
+      
+      <Step title="Setup Environment">
+        ```bash
+        cp .env.example .env
+        cp web/.env.example web/.env
+        ```
+        
+        Edit `.env` with your configuration. See [Configuration](/getting-started/configuration) for details.
+      </Step>
+      
+      <Step title="Start Services">
+        ```bash
+        docker-compose up -d
+        ```
+        
+        This command:
+        - Builds backend and frontend images
+        - Creates a dedicated network
+        - Starts services with resource limits
+        - Enables automatic restarts
+      </Step>
+      
+      <Step title="Initialize Database">
+        ```bash
+        make migrate-up
+        make seed
+        ```
+      </Step>
+      
+      <Step title="Verify Installation">
+        Check if all services are running:
+        
+        ```bash
+        docker-compose ps
+        ```
+        
+        You should see both `pos-backend` and `pos-frontend` containers running.
+      </Step>
+    </Steps>
+    
+    ### Docker Resource Limits
+    
+    The default `docker-compose.yml` sets resource limits:
+    
+    ```yaml
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+    ```
+    
+    Adjust these limits based on your system resources and load requirements.
+  </Tab>
+  
+  <Tab title="Manual Installation">
+    ### Manual Installation
+    
+    For development or when Docker is not available, you can install manually.
+    
+    <Steps>
+      <Step title="Install Go">
+        Download and install Go 1.22+ from [go.dev](https://go.dev/dl/)
+        
+        Verify installation:
+        ```bash
+        go version
+        ```
+      </Step>
+      
+      <Step title="Install Bun">
+        Install Bun runtime:
+        
+        <CodeGroup>
+        ```bash macOS/Linux
+        curl -fsSL https://bun.sh/install | bash
+        ```
+        
+        ```bash Windows
+        powershell -c "irm bun.sh/install.ps1 | iex"
+        ```
+        </CodeGroup>
+        
+        Verify installation:
+        ```bash
+        bun --version
+        ```
+      </Step>
+      
+      <Step title="Install PostgreSQL">
+        Install PostgreSQL 12+ using your system's package manager or download from [postgresql.org](https://www.postgresql.org/download/)
+        
+        Create a database:
+        ```bash
+        createdb pos_kasir
+        ```
+      </Step>
+      
+      <Step title="Clone Repository">
+        ```bash
+        git clone https://github.com/agpprastyo/POS-kasir.git
+        cd POS-kasir
+        ```
+      </Step>
+      
+      <Step title="Configure Environment">
+        ```bash
+        cp .env.example .env
+        ```
+        
+        Update database connection in `.env`:
+        ```bash
+        DB_HOST=localhost
+        DB_PORT=5432
+        DB_USER=your_user
+        DB_PASSWORD=your_password
+        DB_NAME=pos_kasir
+        ```
+      </Step>
+      
+      <Step title="Install Backend Dependencies">
+        ```bash
+        go mod download
+        ```
+      </Step>
+      
+      <Step title="Run Migrations">
+        Install golang-migrate:
+        
+        <CodeGroup>
+        ```bash macOS
+        brew install golang-migrate
+        ```
+        
+        ```bash Linux
+        curl -L https://github.com/golang-migrate/migrate/releases/download/v4.16.2/migrate.linux-amd64.tar.gz | tar xvz
+        sudo mv migrate /usr/local/bin/
+        ```
+        
+        ```bash Windows
+        scoop install migrate
+        ```
+        </CodeGroup>
+        
+        Run migrations:
+        ```bash
+        make migrate-up
+        ```
+      </Step>
+      
+      <Step title="Seed Database">
+        ```bash
+        make seed
+        ```
+      </Step>
+      
+      <Step title="Start Backend">
+        ```bash
+        go run cmd/app/main.go
+        ```
+        
+        The API will be available at `http://localhost:8080`
+      </Step>
+      
+      <Step title="Install Frontend Dependencies">
+        ```bash
+        cd web
+        bun install
+        ```
+      </Step>
+      
+      <Step title="Configure Frontend">
+        ```bash
+        cp .env.example .env
+        ```
+        
+        Update API endpoint:
+        ```bash
+        VITE_API_BASE=http://localhost:8080/api/v1
+        ```
+      </Step>
+      
+      <Step title="Start Frontend">
+        ```bash
+        bun run dev
+        ```
+        
+        The frontend will be available at `http://localhost:3000`
+      </Step>
+    </Steps>
+  </Tab>
+  
+  <Tab title="Development Setup">
+    ### Development Environment
+    
+    For active development with hot-reloading.
+    
+    <Steps>
+      <Step title="Install Development Tools">
+        Install additional development dependencies:
+        
+        ```bash
+        # Install air for hot-reloading
+        go install github.com/cosmtrek/air@latest
+        
+        # Install sqlc for code generation
+        go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
+        
+        # Install swag for API docs generation
+        go install github.com/swaggo/swag/cmd/swag@latest
+        ```
+      </Step>
+      
+      <Step title="Setup Database">
+        Run PostgreSQL with Docker for development:
+        
+        ```bash
+        docker run -d \
+          --name pos-postgres \
+          -e POSTGRES_USER=postgres \
+          -e POSTGRES_PASSWORD=postgres \
+          -e POSTGRES_DB=pos_kasir \
+          -p 5432:5432 \
+          postgres:15-alpine
+        ```
+      </Step>
+      
+      <Step title="Run Migrations and Seed">
+        ```bash
+        make migrate-up
+        make seed
+        ```
+      </Step>
+      
+      <Step title="Start Backend with Hot-Reload">
+        If you have Air configured:
+        ```bash
+        air
+        ```
+        
+        Otherwise:
+        ```bash
+        go run cmd/app/main.go
+        ```
+      </Step>
+      
+      <Step title="Start Frontend with Hot-Reload">
+        ```bash
+        cd web
+        bun run dev
+        ```
+      </Step>
+      
+      <Step title="Generate Code">
+        When you modify SQL queries or API endpoints:
+        
+        ```bash
+        # Generate sqlc code
+        make sqlc-generate
+        
+        # Generate Swagger docs
+        make swag
+        ```
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+## Makefile Commands
+
+POS Kasir includes a Makefile for common operations:
+
+| Command | Description |
+|---------|-------------|
+| `make migrate-up` | Apply all pending migrations |
+| `make migrate-down` | Rollback all migrations |
+| `make migrate-down-one` | Rollback last migration |
+| `make migrate-version` | Show current migration version |
+| `make migrate-create name=<name>` | Create new migration file |
+| `make seed` | Run database seeders |
+| `make sqlc-generate` | Generate sqlc code |
+| `make swag` | Generate Swagger documentation |
+| `make docker-be` | Build and start backend Docker container |
+| `make docker-be-down` | Stop backend Docker container |
+
+## Verification
+
+After installation, verify everything is working:
+
+<AccordionGroup>
+  <Accordion title="Check Backend Health">
+    ```bash
+    curl http://localhost:8080/api/v1/health
+    ```
+    
+    Or visit the Swagger UI:
+    ```
+    http://localhost:8080/swagger/index.html
+    ```
+  </Accordion>
+  
+  <Accordion title="Check Frontend">
+    Open your browser and navigate to:
+    ```
+    http://localhost:3000
+    ```
+    
+    You should see the login page.
+  </Accordion>
+  
+  <Accordion title="Test Login">
+    Try logging in with a seeded account:
+    
+    - **Email**: `admin@example.com`
+    - **Password**: `passwordrahasia`
+  </Accordion>
+  
+  <Accordion title="Check Database Connection">
+    ```bash
+    make migrate-version
+    ```
+    
+    This should display the current migration version without errors.
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<Warning>
+  If you encounter issues during installation, check the following:
+</Warning>
+
+### Common Issues
+
+<AccordionGroup>
+  <Accordion title="Go Module Download Fails">
+    If `go mod download` fails, ensure you have proper internet connectivity and Go is properly configured:
+    
+    ```bash
+    go env GOPROXY
+    ```
+    
+    You may need to configure a proxy:
+    ```bash
+    go env -w GOPROXY=https://proxy.golang.org,direct
+    ```
+  </Accordion>
+  
+  <Accordion title="Migration Fails">
+    If migrations fail with "dirty" state:
+    
+    ```bash
+    # Check current version
+    make migrate-version
+    
+    # Force to specific version
+    make migrate-force version=1
+    
+    # Then try again
+    make migrate-up
+    ```
+  </Accordion>
+  
+  <Accordion title="Port Conflicts">
+    If ports 3000 or 8080 are already in use:
+    
+    ```bash
+    # Find process using port
+    lsof -i :8080
+    
+    # Kill process or change port in .env
+    APP_PORT=8081
+    ```
+  </Accordion>
+  
+  <Accordion title="Docker Build Fails">
+    Clear Docker cache and rebuild:
+    
+    ```bash
+    docker-compose down
+    docker system prune -a
+    docker-compose up -d --build
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration" icon="gear" href="/getting-started/configuration">
+    Configure environment variables, database, and integrations
+  </Card>
+  
+  <Card title="First Steps" icon="book" href="/getting-started/first-steps">
+    Learn how to use POS Kasir for the first time
+  </Card>
+</CardGroup>

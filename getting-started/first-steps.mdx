@@ -1,0 +1,523 @@
+---
+title: 'First Steps'
+description: 'Get started with POS Kasir after installation'
+icon: 'book'
+---
+
+Now that you have POS Kasir installed and configured, this guide will walk you through your first login, understanding user roles, and performing initial setup tasks.
+
+## Initial Login
+
+After running the database seeder, you'll have three default user accounts available:
+
+<CardGroup cols={3}>
+  <Card title="Admin" icon="user-shield">
+    **Email**: `admin@example.com`  
+    **Password**: `passwordrahasia`  
+    **Role**: Administrator
+  </Card>
+  
+  <Card title="Cashier" icon="cash-register">
+    **Email**: `cashier@example.com`  
+    **Password**: `passwordrahasia`  
+    **Role**: Cashier
+  </Card>
+  
+  <Card title="Manager" icon="user-tie">
+    **Email**: `manager@example.com`  
+    **Password**: `passwordrahasia`  
+    **Role**: Manager
+  </Card>
+</CardGroup>
+
+<Steps>
+  <Step title="Access the Application">
+    Open your browser and navigate to:
+    
+    ```
+    http://localhost:3000
+    ```
+    
+    You'll see the login page.
+  </Step>
+  
+  <Step title="Login as Admin">
+    For your first login, use the admin account:
+    
+    - **Email**: `admin@example.com`
+    - **Password**: `passwordrahasia`
+    
+    Click **Sign In** to access the dashboard.
+  </Step>
+  
+  <Step title="Change Default Password">
+    <Warning>
+      **Important**: Change the default password immediately for security!
+    </Warning>
+    
+    Navigate to **Settings** → **Profile** and update your password.
+  </Step>
+</Steps>
+
+## Understanding User Roles
+
+POS Kasir implements Role-Based Access Control (RBAC) with three distinct roles:
+
+### Administrator
+
+<Icon icon="user-shield" /> **Full System Access**
+
+- User management (create, edit, delete users)
+- Product and inventory management
+- Category management
+- Payment method configuration
+- System settings and branding
+- Full access to reports and analytics
+- Activity logs and audit trails
+- Promotion and discount management
+
+### Manager
+
+<Icon icon="user-tie" /> **Management & Reporting**
+
+- View and manage products
+- Access reports and analytics
+- View transaction history
+- Monitor cashier performance
+- View activity logs
+- Limited user management
+
+### Cashier
+
+<Icon icon="cash-register" /> **Point of Sale Operations**
+
+- Process sales transactions
+- Handle cash and digital payments
+- Manage shift operations
+- View product catalog
+- Generate receipts
+- Limited access to reports (own transactions only)
+
+<Info>
+  User roles are enforced both on the frontend (UI restrictions) and backend (API authorization).
+</Info>
+
+## Initial Setup Tasks
+
+Complete these essential setup tasks to prepare your POS system:
+
+### 1. Configure System Branding
+
+<Steps>
+  <Step title="Upload Logo">
+    Go to **Settings** → **Branding** and upload your business logo.
+    
+    This logo will appear on:
+    - Login page
+    - Dashboard header
+    - Printed receipts
+  </Step>
+  
+  <Step title="Set Business Information">
+    Configure:
+    - Business name
+    - Address
+    - Phone number
+    - Tax identification number
+  </Step>
+  
+  <Step title="Configure Printer Settings">
+    Go to **Settings** → **Printer** to configure:
+    - Receipt paper size
+    - Header/footer text
+    - Logo position
+    - Print options
+  </Step>
+</Steps>
+
+### 2. Set Up Product Categories
+
+<Steps>
+  <Step title="Create Categories">
+    Navigate to **Products** → **Categories**
+    
+    Create categories for organizing your products:
+    - Beverages
+    - Food
+    - Snacks
+    - Merchandise
+  </Step>
+  
+  <Step title="Add Category Details">
+    For each category, specify:
+    - Category name
+    - Description (optional)
+    - Display order
+  </Step>
+</Steps>
+
+### 3. Add Products
+
+<Steps>
+  <Step title="Navigate to Products">
+    Go to **Products** → **All Products** → **Add New Product**
+  </Step>
+  
+  <Step title="Fill Product Details">
+    Enter product information:
+    
+    - **Name**: Product name
+    - **SKU**: Stock keeping unit (unique identifier)
+    - **Category**: Select from created categories
+    - **Price**: Selling price
+    - **Cost**: Purchase cost (for profit calculation)
+    - **Stock**: Initial quantity
+    - **Description**: Product description
+    - **Image**: Upload product image (stored in R2)
+  </Step>
+  
+  <Step title="Add Product Options (Optional)">
+    For products with variants (e.g., sizes, flavors):
+    
+    - Click **Add Option**
+    - Name: "Size", "Flavor", etc.
+    - Values: "Small", "Medium", "Large"
+    - Price adjustments for each option
+  </Step>
+  
+  <Step title="Set Stock Management">
+    Configure:
+    - Minimum stock level (low stock alerts)
+    - Track inventory automatically
+    - Enable/disable stock management per product
+  </Step>
+</Steps>
+
+### 4. Configure Payment Methods
+
+<Steps>
+  <Step title="Review Default Methods">
+    Navigate to **Settings** → **Payment Methods**
+    
+    Default methods from seeder:
+    - Cash
+    - Credit/Debit Card
+    - Digital Wallet (Midtrans)
+  </Step>
+  
+  <Step title="Enable/Disable Methods">
+    Toggle payment methods based on your needs:
+    
+    - Enable **Cash** for traditional payments
+    - Enable **Midtrans** for digital payments (requires configuration)
+    - Disable unused methods
+  </Step>
+  
+  <Step title="Test Midtrans Integration">
+    If using digital payments:
+    
+    1. Ensure `MIDTRANS_SERVER_KEY` is set in `.env`
+    2. Keep `MIDTRANS_IS_PROD=false` for testing
+    3. Create a test transaction
+    4. Use [Midtrans test cards](https://docs.midtrans.com/docs/testing-payment-on-sandbox) to verify
+  </Step>
+</Steps>
+
+### 5. Create Additional Users
+
+<Steps>
+  <Step title="Go to User Management">
+    Navigate to **Settings** → **Users** → **Add New User**
+  </Step>
+  
+  <Step title="Fill User Information">
+    - **Username**: Unique username
+    - **Email**: User email address
+    - **Password**: Initial password (user should change on first login)
+    - **Role**: Select appropriate role (Admin/Manager/Cashier)
+    - **Active**: Enable user account
+  </Step>
+  
+  <Step title="Notify User">
+    Provide the user with:
+    - Login URL: `http://localhost:3000`
+    - Their email and temporary password
+    - Instructions to change password on first login
+  </Step>
+</Steps>
+
+## First Transaction
+
+Test your setup by processing a test transaction:
+
+<Steps>
+  <Step title="Login as Cashier">
+    Use the cashier account or create a new cashier user.
+  </Step>
+  
+  <Step title="Start a Shift">
+    Before processing transactions:
+    
+    1. Go to **Shift** → **Start Shift**
+    2. Enter starting cash amount
+    3. Confirm to begin accepting transactions
+    
+    <Info>
+      Shifts track cashier activities and cash flow during work periods.
+    </Info>
+  </Step>
+  
+  <Step title="Open POS Interface">
+    Click **Point of Sale** or **New Sale** to access the POS screen.
+  </Step>
+  
+  <Step title="Add Products to Cart">
+    - Browse or search for products
+    - Click products to add to cart
+    - Adjust quantities if needed
+    - Select product options if available
+  </Step>
+  
+  <Step title="Apply Discounts (Optional)">
+    - Add manual discount (percentage or fixed amount)
+    - Or apply promotion codes if configured
+  </Step>
+  
+  <Step title="Process Payment">
+    1. Click **Checkout**
+    2. Select payment method:
+       - **Cash**: Enter amount received, system calculates change
+       - **Digital**: Generates Midtrans payment link
+    3. Complete payment
+    4. Print or email receipt
+  </Step>
+  
+  <Step title="End Shift">
+    When cashier's shift ends:
+    
+    1. Go to **Shift** → **End Shift**
+    2. Count cash in register
+    3. Enter actual cash amount
+    4. System shows expected vs actual (discrepancy report)
+    5. Confirm to close shift
+  </Step>
+</Steps>
+
+## Exploring the Dashboard
+
+<CardGroup cols={2}>
+  <Card title="Dashboard Overview" icon="chart-line">
+    View key metrics:
+    - Today's sales
+    - Transaction count
+    - Popular products
+    - Cashier performance
+  </Card>
+  
+  <Card title="Reports & Analytics" icon="chart-bar">
+    Access detailed reports:
+    - Sales reports (daily/weekly/monthly)
+    - Product performance
+    - Profit analysis
+    - Payment method breakdown
+    - Cashier performance
+  </Card>
+  
+  <Card title="Transaction History" icon="receipt">
+    View and manage orders:
+    - Filter by date, status, cashier
+    - View order details
+    - Print receipts
+    - Process refunds/cancellations
+  </Card>
+  
+  <Card title="Activity Logs" icon="list">
+    Audit trail of system activities:
+    - User actions
+    - Product changes
+    - Order modifications
+    - System events
+  </Card>
+</CardGroup>
+
+## API Exploration
+
+Explore the backend API using Swagger documentation:
+
+<Steps>
+  <Step title="Access Swagger UI">
+    Navigate to:
+    ```
+    http://localhost:8080/swagger/index.html
+    ```
+  </Step>
+  
+  <Step title="Authenticate">
+    1. Click **Authorize** button
+    2. Use the `/auth/login` endpoint to get JWT token
+    3. Copy the token from response
+    4. Paste token in authorization field: `Bearer <your-token>`
+  </Step>
+  
+  <Step title="Test Endpoints">
+    Try various endpoints:
+    - `GET /products` - List all products
+    - `POST /orders` - Create new order
+    - `GET /reports/dashboard-summary` - Get dashboard data
+    - `GET /activity-logs` - View activity logs
+  </Step>
+</Steps>
+
+<Info>
+  The API follows RESTful conventions and returns responses in JSON format.
+</Info>
+
+## Multi-language Support
+
+POS Kasir frontend supports multiple languages:
+
+- **English** (en)
+- **Indonesian** (id)
+
+Users can change language from the settings or profile menu. The language preference is saved per user.
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Security">
+    - Change all default passwords immediately
+    - Use strong passwords (min 8 characters, mix of letters, numbers, symbols)
+    - Regularly review user access and roles
+    - Monitor activity logs for suspicious activities
+    - Keep JWT tokens secure (never share)
+    - Set appropriate session timeout (`JWT_DURATION_HOURS`)
+  </Accordion>
+  
+  <Accordion title="Operations">
+    - Always start and end shifts properly
+    - Count cash at shift end to detect discrepancies
+    - Regularly backup your database
+    - Monitor stock levels and set reorder points
+    - Review daily reports for anomalies
+    - Train staff on proper POS usage
+  </Accordion>
+  
+  <Accordion title="Data Management">
+    - Keep product information up to date
+    - Regular stock audits and adjustments
+    - Archive old transactions periodically
+    - Clean up unused products and categories
+    - Maintain accurate cost prices for profit tracking
+  </Accordion>
+  
+  <Accordion title="Performance">
+    - Monitor system resources (CPU, memory, disk)
+    - Regular database maintenance and optimization
+    - Optimize product images (compress before upload)
+    - Review slow queries in logs
+    - Scale resources as transaction volume grows
+  </Accordion>
+</AccordionGroup>
+
+## Common Tasks
+
+### Managing Stock
+
+- **Adjust Stock**: Go to product details → Stock History → Adjust
+- **View History**: See all stock movements with timestamps and reasons
+- **Low Stock Alerts**: Products below minimum threshold are highlighted
+
+### Processing Refunds
+
+1. Find transaction in **Transaction History**
+2. Click **View Details**
+3. Select **Refund** or **Cancel**
+4. Choose cancellation reason
+5. Confirm refund (stock is automatically adjusted)
+
+### Creating Promotions
+
+1. Navigate to **Promotions** → **Create Promotion**
+2. Set promotion details:
+   - Name and description
+   - Discount type (percentage/fixed)
+   - Start and end dates
+   - Target: All products, category, or specific products
+3. Define rules (minimum purchase, quantity requirements)
+4. Activate promotion
+
+### Viewing Reports
+
+- **Sales Report**: Revenue over time periods
+- **Product Performance**: Best/worst sellers, quantity sold
+- **Profit Analysis**: Profit margins per product/category
+- **Cashier Performance**: Transactions and sales per cashier
+- **Payment Methods**: Breakdown of payment types used
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Can't Login">
+    - Verify credentials (case-sensitive)
+    - Check if user account is active
+    - Ensure backend is running: `docker-compose ps`
+    - Check browser console for API errors
+    - Verify `VITE_API_BASE` in `web/.env` is correct
+  </Accordion>
+  
+  <Accordion title="Payment Failed">
+    - For Midtrans: Check `MIDTRANS_SERVER_KEY` is set
+    - Verify Midtrans sandbox mode for testing
+    - Check browser console and backend logs
+    - Ensure internet connectivity for external payment gateway
+  </Accordion>
+  
+  <Accordion title="Image Upload Failed">
+    - Verify R2 credentials in `.env`
+    - Check R2 bucket exists and is accessible
+    - Verify file size (may have limits)
+    - Check backend logs for S3 errors
+  </Accordion>
+  
+  <Accordion title="Stock Not Updating">
+    - Check if product has stock tracking enabled
+    - Verify transaction was completed (not pending)
+    - Review activity logs for stock adjustments
+    - Check for database connection issues
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="API Reference" icon="code" href="/api/introduction">
+    Explore detailed API documentation
+  </Card>
+  
+  <Card title="Core Features" icon="sparkles" href="/features/authentication">
+    Learn about advanced features and capabilities
+  </Card>
+  
+  <Card title="Deployment" icon="server" href="/deployment/docker">
+    Deploy POS Kasir to production
+  </Card>
+  
+  <Card title="Development" icon="wrench" href="/development/architecture">
+    System architecture and development guide
+  </Card>
+</CardGroup>
+
+## Getting Help
+
+If you need assistance:
+
+- Check the [API Documentation](http://localhost:8080/swagger/index.html)
+- Review [Activity Logs](/getting-started/first-steps#exploring-the-dashboard) for error details
+- Check backend logs: `docker-compose logs backend`
+- Check frontend logs in browser console (F12)
+
+<Info>
+  For the live demo, visit:
+  - **Frontend**: [https://pos-kasir.agprastyo.me](https://pos-kasir.agprastyo.me/)
+  - **API**: [https://api-pos.agprastyo.me/api/v1/swagger/index.html](https://api-pos.agprastyo.me/api/v1/swagger/index.html)
+</Info>

@@ -1,0 +1,648 @@
+---
+title: 'Orders'
+description: 'Order creation and management endpoints'
+---
+
+## List Orders
+
+<CodeBlock title="GET /api/v1/orders">
+Get a list of orders with filtering by status and user.
+
+**Authentication Required:** Yes
+
+**Roles:** `admin`, `manager`, `cashier`
+</CodeBlock>
+
+### Query Parameters
+
+<ParamField query="page" type="integer">
+  Page number
+</ParamField>
+
+<ParamField query="limit" type="integer">
+  Number of orders per page
+</ParamField>
+
+<ParamField query="statuses" type="array">
+  Order statuses to filter: `open`, `in_progress`, `served`, `paid`, `cancelled`
+</ParamField>
+
+<ParamField query="user_id" type="string">
+  Filter by User ID (UUID format)
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  <ResponseField name="orders" type="array">
+    <ResponseField name="id" type="string">
+      Order ID (UUID)
+    </ResponseField>
+    
+    <ResponseField name="queue_number" type="string">
+      Queue/order number
+    </ResponseField>
+    
+    <ResponseField name="type" type="string">
+      Order type: `dine_in` or `takeaway`
+    </ResponseField>
+    
+    <ResponseField name="status" type="string">
+      Order status
+    </ResponseField>
+    
+    <ResponseField name="is_paid" type="boolean">
+      Payment status
+    </ResponseField>
+    
+    <ResponseField name="net_total" type="integer">
+      Total amount
+    </ResponseField>
+    
+    <ResponseField name="user_id" type="string">
+      User who created the order
+    </ResponseField>
+    
+    <ResponseField name="items" type="array">
+      Order items
+    </ResponseField>
+    
+    <ResponseField name="created_at" type="string">
+      Creation timestamp
+    </ResponseField>
+  </ResponseField>
+  
+  <ResponseField name="pagination" type="object">
+    Pagination information
+  </ResponseField>
+</ResponseField>
+
+### Example
+
+```bash
+curl -X GET "https://localhost:8080/api/v1/orders?page=1&limit=10&statuses=open&statuses=in_progress" \
+  -H "Cookie: access_token=YOUR_TOKEN"
+```
+
+<ResponseExample>
+```json
+{
+  "message": "Orders retrieved successfully",
+  "data": {
+    "orders": [
+      {
+        "id": "789e4567-e89b-12d3-a456-426614174000",
+        "queue_number": "001",
+        "type": "dine_in",
+        "status": "open",
+        "is_paid": false,
+        "net_total": 65000,
+        "user_id": "550e8400-e29b-41d4-a716-446655440000",
+        "items": [
+          {
+            "id": "item-001",
+            "product_id": "123e4567-e89b-12d3-a456-426614174000",
+            "product_name": "Espresso",
+            "quantity": 2,
+            "price_at_sale": 25000,
+            "subtotal": 50000
+          }
+        ],
+        "created_at": "2024-03-03T10:00:00Z"
+      }
+    ],
+    "pagination": {
+      "current_page": 1,
+      "per_page": 10,
+      "total_data": 1,
+      "total_page": 1
+    }
+  }
+}
+```
+</ResponseExample>
+
+---
+
+## Get Order by ID
+
+<CodeBlock title="GET /api/v1/orders/{id}">
+Retrieve detailed information of a specific order by its ID.
+
+**Authentication Required:** Yes
+
+**Roles:** `admin`, `manager`, `cashier`
+</CodeBlock>
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  Order ID (UUID format)
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  <ResponseField name="id" type="string">
+    Order ID
+  </ResponseField>
+  
+  <ResponseField name="type" type="string">
+    Order type: `dine_in` or `takeaway`
+  </ResponseField>
+  
+  <ResponseField name="status" type="string">
+    Order status
+  </ResponseField>
+  
+  <ResponseField name="user_id" type="string">
+    User who created the order
+  </ResponseField>
+  
+  <ResponseField name="gross_total" type="integer">
+    Gross total before discount
+  </ResponseField>
+  
+  <ResponseField name="discount_amount" type="integer">
+    Discount amount
+  </ResponseField>
+  
+  <ResponseField name="net_total" type="integer">
+    Net total after discount
+  </ResponseField>
+  
+  <ResponseField name="applied_promotion_id" type="string">
+    Applied promotion ID
+  </ResponseField>
+  
+  <ResponseField name="payment_method_id" type="integer">
+    Payment method ID
+  </ResponseField>
+  
+  <ResponseField name="cash_received" type="integer">
+    Cash received amount
+  </ResponseField>
+  
+  <ResponseField name="change_due" type="integer">
+    Change to return
+  </ResponseField>
+  
+  <ResponseField name="items" type="array">
+    Order items with details
+  </ResponseField>
+  
+  <ResponseField name="created_at" type="string">
+    Creation timestamp
+  </ResponseField>
+  
+  <ResponseField name="updated_at" type="string">
+    Last update timestamp
+  </ResponseField>
+</ResponseField>
+
+### Example
+
+```bash
+curl -X GET https://localhost:8080/api/v1/orders/789e4567-e89b-12d3-a456-426614174000 \
+  -H "Cookie: access_token=YOUR_TOKEN"
+```
+
+---
+
+## Create Order
+
+<CodeBlock title="POST /api/v1/orders">
+Create a new order with multiple items.
+
+**Authentication Required:** Yes
+
+**Roles:** `admin`, `manager`, `cashier`
+</CodeBlock>
+
+### Request Body
+
+<ParamField body="type" type="string" required>
+  Order type: `dine_in` or `takeaway`
+</ParamField>
+
+<ParamField body="items" type="array" required>
+  Array of order items (minimum 1 item)
+  
+  <ParamField body="product_id" type="string" required>
+    Product ID (UUID)
+  </ParamField>
+  
+  <ParamField body="quantity" type="integer" required>
+    Quantity
+  </ParamField>
+  
+  <ParamField body="options" type="array">
+    Product options/variants
+    
+    <ParamField body="product_option_id" type="string" required>
+      Product option ID
+    </ParamField>
+  </ParamField>
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Created order details
+</ResponseField>
+
+### Example
+
+```bash
+curl -X POST https://localhost:8080/api/v1/orders \
+  -H "Content-Type: application/json" \
+  -H "Cookie: access_token=YOUR_TOKEN" \
+  -d '{
+    "type": "dine_in",
+    "items": [
+      {
+        "product_id": "123e4567-e89b-12d3-a456-426614174000",
+        "quantity": 2,
+        "options": [
+          {
+            "product_option_id": "323e4567-e89b-12d3-a456-426614174002"
+          }
+        ]
+      },
+      {
+        "product_id": "223e4567-e89b-12d3-a456-426614174001",
+        "quantity": 1,
+        "options": []
+      }
+    ]
+  }'
+```
+
+<ResponseExample>
+```json
+{
+  "message": "Order created successfully",
+  "data": {
+    "id": "889e4567-e89b-12d3-a456-426614174010",
+    "type": "dine_in",
+    "status": "open",
+    "gross_total": 90000,
+    "discount_amount": 0,
+    "net_total": 90000,
+    "items": [
+      {
+        "id": "item-001",
+        "product_id": "123e4567-e89b-12d3-a456-426614174000",
+        "product_name": "Espresso",
+        "quantity": 2,
+        "price_at_sale": 25000,
+        "subtotal": 60000,
+        "options": [
+          {
+            "product_option_id": "323e4567-e89b-12d3-a456-426614174002",
+            "option_name": "Extra Shot",
+            "price_at_sale": 5000
+          }
+        ]
+      },
+      {
+        "id": "item-002",
+        "product_id": "223e4567-e89b-12d3-a456-426614174001",
+        "product_name": "Cappuccino",
+        "quantity": 1,
+        "price_at_sale": 30000,
+        "subtotal": 30000,
+        "options": []
+      }
+    ],
+    "created_at": "2024-03-03T12:30:00Z"
+  }
+}
+```
+</ResponseExample>
+
+---
+
+## Update Order Items
+
+<CodeBlock title="PUT /api/v1/orders/{id}/items">
+Update, add, or remove items in an existing open order.
+
+**Authentication Required:** Yes
+
+**Roles:** `admin`, `manager`, `cashier`
+</CodeBlock>
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  Order ID (UUID format)
+</ParamField>
+
+### Request Body
+
+Array of order items (same structure as Create Order items)
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Updated order details
+</ResponseField>
+
+### Example
+
+```bash
+curl -X PUT https://localhost:8080/api/v1/orders/889e4567-e89b-12d3-a456-426614174010/items \
+  -H "Content-Type: application/json" \
+  -H "Cookie: access_token=YOUR_TOKEN" \
+  -d '[
+    {
+      "product_id": "123e4567-e89b-12d3-a456-426614174000",
+      "quantity": 3,
+      "options": []
+    }
+  ]'
+```
+
+---
+
+## Update Order Status
+
+<CodeBlock title="POST /api/v1/orders/{id}/update-status">
+Update the operational status of an existing order.
+
+**Authentication Required:** Yes
+
+**Roles:** `admin`, `manager`, `cashier`
+</CodeBlock>
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  Order ID (UUID format)
+</ParamField>
+
+### Request Body
+
+<ParamField body="status" type="string" required>
+  New status: `in_progress`, `served`, or `paid`
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Updated order details
+</ResponseField>
+
+### Example
+
+```bash
+curl -X POST https://localhost:8080/api/v1/orders/889e4567-e89b-12d3-a456-426614174010/update-status \
+  -H "Content-Type: application/json" \
+  -H "Cookie: access_token=YOUR_TOKEN" \
+  -d '{
+    "status": "in_progress"
+  }'
+```
+
+---
+
+## Apply Promotion
+
+<CodeBlock title="POST /api/v1/orders/{id}/apply-promotion">
+Apply a specific promotion to an existing order.
+
+**Authentication Required:** Yes
+
+**Roles:** `admin`, `manager`, `cashier`
+</CodeBlock>
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  Order ID (UUID format)
+</ParamField>
+
+### Request Body
+
+<ParamField body="promotion_id" type="string" required>
+  Promotion ID (UUID)
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Updated order details with discount applied
+</ResponseField>
+
+### Example
+
+```bash
+curl -X POST https://localhost:8080/api/v1/orders/889e4567-e89b-12d3-a456-426614174010/apply-promotion \
+  -H "Content-Type: application/json" \
+  -H "Cookie: access_token=YOUR_TOKEN" \
+  -d '{
+    "promotion_id": "999e4567-e89b-12d3-a456-426614174020"
+  }'
+```
+
+---
+
+## Confirm Manual Payment
+
+<CodeBlock title="POST /api/v1/orders/{id}/pay/manual">
+Process a manual payment (Cash) and finalize an order.
+
+**Authentication Required:** Yes
+
+**Roles:** `admin`, `manager`, `cashier`
+</CodeBlock>
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  Order ID (UUID format)
+</ParamField>
+
+### Request Body
+
+<ParamField body="payment_method_id" type="integer" required>
+  Payment method ID
+</ParamField>
+
+<ParamField body="cash_received" type="integer">
+  Cash received amount (minimum 0, required for cash payments)
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Completed order details with payment information
+</ResponseField>
+
+### Example
+
+```bash
+curl -X POST https://localhost:8080/api/v1/orders/889e4567-e89b-12d3-a456-426614174010/pay/manual \
+  -H "Content-Type: application/json" \
+  -H "Cookie: access_token=YOUR_TOKEN" \
+  -d '{
+    "payment_method_id": 1,
+    "cash_received": 100000
+  }'
+```
+
+<ResponseExample>
+```json
+{
+  "message": "Payment completed successfully",
+  "data": {
+    "id": "889e4567-e89b-12d3-a456-426614174010",
+    "status": "paid",
+    "net_total": 90000,
+    "payment_method_id": 1,
+    "cash_received": 100000,
+    "change_due": 10000
+  }
+}
+```
+</ResponseExample>
+
+---
+
+## Initiate Midtrans Payment
+
+<CodeBlock title="POST /api/v1/orders/{id}/pay/midtrans">
+Create a QRIS/Gopay payment session via Midtrans for an existing order.
+
+**Authentication Required:** Yes
+
+**Roles:** `admin`, `manager`, `cashier`
+</CodeBlock>
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  Order ID (UUID format)
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  <ResponseField name="order_id" type="string">
+    Order ID
+  </ResponseField>
+  
+  <ResponseField name="transaction_id" type="string">
+    Midtrans transaction ID
+  </ResponseField>
+  
+  <ResponseField name="gross_amount" type="string">
+    Transaction amount
+  </ResponseField>
+  
+  <ResponseField name="qr_string" type="string">
+    QRIS code string
+  </ResponseField>
+  
+  <ResponseField name="expiry_time" type="string">
+    Payment expiration time
+  </ResponseField>
+  
+  <ResponseField name="actions" type="array">
+    Payment action URLs
+  </ResponseField>
+</ResponseField>
+
+### Example
+
+```bash
+curl -X POST https://localhost:8080/api/v1/orders/889e4567-e89b-12d3-a456-426614174010/pay/midtrans \
+  -H "Cookie: access_token=YOUR_TOKEN"
+```
+
+---
+
+## Cancel Order
+
+<CodeBlock title="POST /api/v1/orders/{id}/cancel">
+Cancel an existing order with a reason.
+
+**Authentication Required:** Yes
+
+**Roles:** `admin`, `manager`, `cashier`
+</CodeBlock>
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  Order ID (UUID format)
+</ParamField>
+
+### Request Body
+
+<ParamField body="cancellation_reason_id" type="integer" required>
+  Cancellation reason ID
+</ParamField>
+
+<ParamField body="cancellation_notes" type="string">
+  Additional notes (max 255 characters)
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+### Example
+
+```bash
+curl -X POST https://localhost:8080/api/v1/orders/889e4567-e89b-12d3-a456-426614174010/cancel \
+  -H "Content-Type: application/json" \
+  -H "Cookie: access_token=YOUR_TOKEN" \
+  -d '{
+    "cancellation_reason_id": 1,
+    "cancellation_notes": "Customer changed their mind"
+  }'
+```
+
+<ResponseExample>
+```json
+{
+  "message": "Order cancelled successfully"
+}
+```
+</ResponseExample>

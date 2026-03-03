@@ -1,0 +1,1128 @@
+---
+title: Database Schema
+description: Complete PostgreSQL database schema documentation including tables, relationships, enums, and indexes
+---
+
+## Overview
+
+POS Kasir uses **PostgreSQL** as its primary database with a well-structured relational schema designed for:
+
+- **Data integrity** - Foreign keys, constraints, and ACID transactions
+- **Performance** - Strategic indexes on commonly queried columns
+- **Auditability** - Automatic timestamps and activity logging
+- **Type safety** - Custom ENUM types for controlled values
+
+**Migration Files**: `sqlc/migrations/`
+**Initial Schema**: `000001_init.up.sql`
+
+## Entity Relationship Diagram
+
+```
+┌─────────────┐         ┌──────────────┐
+│   users     │────────<│    orders    │
+└──────┬──────┘         └───────┬──────┘
+       │                        │
+       │ ┌──────────────┐       │
+       └>│ activity_logs│       │
+         └──────────────┘       │
+       ┌──────────────┐         │
+       │   shifts     │<────────┤
+       └──────┬───────┘         │
+              │                 │
+              v                 v
+       ┌────────────────┐  ┌────────────┐
+       │cash_transactions│  │order_items │
+       └────────────────┘  └─────┬──────┘
+                                 │
+                                 v
+                        ┌─────────────────────┐
+                        │order_item_options   │
+                        └─────────────────────┘
+
+┌────────────┐         ┌──────────────┐
+│ categories │────────<│   products   │
+└────────────┘         └───────┬──────┘
+                               │
+              ┌────────────────┼────────────────┐
+              │                │                │
+              v                v                v
+       ┌────────────┐  ┌────────────┐  ┌──────────────┐
+       │order_items │  │product_    │  │stock_history │
+       └────────────┘  │options     │  └──────────────┘
+                       └─────┬──────┘
+                             │
+                             v
+                   ┌──────────────────┐
+                   │order_item_options│
+                   └──────────────────┘
+
+┌───────────┐         ┌──────────────┐
+│promotions │────────<│promotion_    │
+└─────┬─────┘         │rules         │
+      │               └──────────────┘
+      │
+      └──────────────>┌──────────────┐
+                      │promotion_    │
+                      │targets       │
+                      └──────────────┘
+```
+
+## Core Tables
+
+### users
+**User accounts with role-based access control**
+
+Location: `sqlc/migrations/000001_init.up.sql:23-33`
+
+```sql
+CREATE TABLE users (
+  id UUID PRIMARY KEY,
+  username VARCHAR(100) UNIQUE NOT NULL,
+  email VARCHAR(255) UNIQUE NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  avatar TEXT,
+  role user_role NOT NULL,
+  is_active BOOLEAN NOT NULL DEFAULT true
+);
+```
+
+**Fields**:
+- `id` - UUID primary key (auto-generated)
+- `username` - Unique username for login
+- `email` - Unique email address
+- `password_hash` - bcrypt hashed password
+- `role` - User role (admin, cashier, manager)
+- `is_active` - Account status
+- `avatar` - Profile image URL (Cloudflare R2)
+- `deleted_at` - Soft delete timestamp (added in migration `000007`)
+- `refresh_token` - JWT refresh token hash (added in migration `000010`)
+
+**Indexes**: None (username/email are unique, automatically indexed)
+
+**Relationships**:
+- One-to-many with `orders` (cashier who created order)
+- One-to-many with `activity_logs` (user actions)
+- One-to-many with `shifts` (cashier shifts)
+- One-to-many with `cash_transactions`
+
+---
+
+### categories
+**Product categorization**
+
+Location: `sqlc/migrations/000001_init.up.sql:35-40`
+
+```sql
+CREATE TABLE categories (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(100) UNIQUE NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+**Fields**:
+- `id` - Auto-incrementing integer
+- `name` - Unique category name
+- `created_at` - Creation timestamp
+- `updated_at` - Last update timestamp (auto-updated via trigger)
+
+**Relationships**:
+- One-to-many with `products`
+
+---
+
+### products
+**Product inventory and pricing**
+
+Location: `sqlc/migrations/000001_init.up.sql:42-51`
+
+```sql
+CREATE TABLE products (
+  id UUID PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+  image_url TEXT,
+  price NUMERIC(12,2) NOT NULL CHECK (price >= 0),
+  stock INTEGER NOT NULL DEFAULT 0 CHECK (stock >= 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+**Fields**:
+- `id` - UUID primary key
+- `name` - Product name
+- `category_id` - Foreign key to categories (nullable)
+- `image_url` - Product image (Cloudflare R2)
+- `price` - Base price (12 digits, 2 decimals)
+- `stock` - Current inventory quantity
+- `deleted_at` - Soft delete timestamp (added in migration `000005`)
+- `cost_price` - Purchase cost (added in migration `000016`)
+
+**Constraints**:
+- `price >= 0` - Prevent negative prices
+- `stock >= 0` - Prevent negative stock
+
+**Indexes**:
+- `idx_products_name` - Fast product name search
+
+**Relationships**:
+- Many-to-one with `categories`
+- One-to-many with `product_options`
+- One-to-many with `order_items`
+- One-to-many with `stock_history`
+
+---
+
+### product_options
+**Product variants (size, flavor, etc.)**
+
+Location: `sqlc/migrations/000001_init.up.sql:53-61`
+
+```sql
+CREATE TABLE product_options (
+  id UUID PRIMARY KEY,
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  name VARCHAR(100) NOT NULL,
+  additional_price NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (additional_price >= 0),
+  image_url TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+**Fields**:
+- `id` - UUID primary key
+- `product_id` - Parent product
+- `name` - Option name (e.g., "Large", "Extra Shot")
+- `additional_price` - Price modifier
+- `image_url` - Option-specific image
+- `deleted_at` - Soft delete (added in migration `000006`)
+
+**Cascade Behavior**:
+- Deleted when parent product is deleted
+
+**Relationships**:
+- Many-to-one with `products`
+- One-to-many with `order_item_options`
+
+---
+
+### orders
+**Customer orders and transactions**
+
+Location: `sqlc/migrations/000001_init.up.sql:114-131`
+
+```sql
+CREATE TABLE orders (
+  id UUID PRIMARY KEY,
+  user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  type order_type NOT NULL DEFAULT 'dine_in',
+  status order_status NOT NULL DEFAULT 'open',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  gross_total NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (gross_total >= 0),
+  discount_amount NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (discount_amount >= 0),
+  net_total NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (net_total >= 0),
+  applied_promotion_id UUID REFERENCES promotions(id) ON DELETE SET NULL,
+  payment_method_id INTEGER REFERENCES payment_methods(id),
+  payment_gateway_reference VARCHAR(255),
+  cash_received NUMERIC(12,2) CHECK (cash_received >= 0),
+  change_due NUMERIC(12,2) CHECK (change_due >= 0),
+  cancellation_reason_id INTEGER REFERENCES cancellation_reasons(id) ON DELETE SET NULL,
+  cancellation_notes TEXT
+);
+```
+
+**Fields**:
+- `id` - UUID primary key
+- `user_id` - Cashier who created order
+- `type` - Order type: `dine_in`, `takeaway`
+- `status` - Order status: `open`, `in_progress`, `served`, `paid`, `cancelled`
+- `gross_total` - Total before discounts
+- `discount_amount` - Total discount applied
+- `net_total` - Final amount to pay
+- `applied_promotion_id` - Promotion used
+- `payment_method_id` - Payment method
+- `payment_gateway_reference` - Midtrans transaction ID
+- `cash_received` - Cash payment amount
+- `change_due` - Change to return
+- `cancellation_reason_id` - Why order was cancelled
+- `cancellation_notes` - Additional cancellation info
+- `payment_url` - Midtrans payment link (added in migration `000012`)
+
+**Indexes**:
+- `idx_orders_status` - Filter by status
+- `idx_orders_created_at` - Date range queries
+- `idx_orders_payment_gateway_reference` - Midtrans webhook lookup
+
+**Relationships**:
+- Many-to-one with `users` (cashier)
+- Many-to-one with `promotions`
+- Many-to-one with `payment_methods`
+- Many-to-one with `cancellation_reasons`
+- One-to-many with `order_items`
+
+---
+
+### order_items
+**Line items in an order**
+
+Location: `sqlc/migrations/000001_init.up.sql:133-142`
+
+```sql
+CREATE TABLE order_items (
+  id UUID PRIMARY KEY,
+  order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
+  quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
+  price_at_sale NUMERIC(12,2) NOT NULL CHECK (price_at_sale >= 0),
+  subtotal NUMERIC(12,2) NOT NULL CHECK (subtotal >= 0),
+  discount_amount NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (discount_amount >= 0),
+  net_subtotal NUMERIC(12,2) NOT NULL CHECK (net_subtotal >= 0)
+);
+```
+
+**Fields**:
+- `id` - UUID primary key
+- `order_id` - Parent order
+- `product_id` - Product purchased
+- `quantity` - Number of units
+- `price_at_sale` - Product price at time of sale (historical)
+- `subtotal` - Quantity × Price (before item discount)
+- `discount_amount` - Item-level discount
+- `net_subtotal` - Final line item total
+
+**Cascade Behavior**:
+- Deleted when order is deleted
+- Cannot delete product if used in orders (`ON DELETE RESTRICT`)
+
+**Relationships**:
+- Many-to-one with `orders`
+- Many-to-one with `products`
+- One-to-many with `order_item_options`
+
+---
+
+### order_item_options
+**Selected product options for order items**
+
+Location: `sqlc/migrations/000001_init.up.sql:144-149`
+
+```sql
+CREATE TABLE order_item_options (
+  id UUID PRIMARY KEY,
+  order_item_id UUID NOT NULL REFERENCES order_items(id) ON DELETE CASCADE,
+  product_option_id UUID NOT NULL REFERENCES product_options(id) ON DELETE RESTRICT,
+  price_at_sale NUMERIC(12,2) NOT NULL CHECK (price_at_sale >= 0)
+);
+```
+
+**Fields**:
+- `id` - UUID primary key
+- `order_item_id` - Parent order item
+- `product_option_id` - Selected option
+- `price_at_sale` - Option price at time of sale
+
+**Example**: Coffee (product) with "Large" (option) and "Extra Shot" (option)
+
+---
+
+## Payment & Transaction Tables
+
+### payment_methods
+**Available payment options**
+
+Location: `sqlc/migrations/000001_init.up.sql:63-69`
+
+```sql
+CREATE TABLE payment_methods (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(50) UNIQUE NOT NULL,
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+**Examples**: Cash, Credit Card, Debit Card, E-Wallet, QRIS
+
+---
+
+### cancellation_reasons
+**Predefined cancellation reasons**
+
+Location: `sqlc/migrations/000001_init.up.sql:71-78`
+
+```sql
+CREATE TABLE cancellation_reasons (
+  id SERIAL PRIMARY KEY,
+  reason VARCHAR(255) UNIQUE NOT NULL,
+  description TEXT,
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+**Examples**: "Customer Request", "Out of Stock", "Wrong Order", "Payment Failed"
+
+---
+
+### shifts
+**Cashier shift management**
+
+Location: `sqlc/migrations/000014_create_shifts_and_cash_transactions_tables.up.sql:3-14`
+
+```sql
+CREATE TABLE shifts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id),
+    start_time TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    end_time TIMESTAMP WITH TIME ZONE,
+    start_cash BIGINT NOT NULL DEFAULT 0,
+    expected_cash_end BIGINT,
+    actual_cash_end BIGINT,
+    status shift_status NOT NULL DEFAULT 'open',
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+```
+
+**Fields**:
+- `id` - UUID primary key
+- `user_id` - Cashier
+- `start_time` - Shift start timestamp
+- `end_time` - Shift end timestamp (NULL if open)
+- `start_cash` - Opening cash drawer amount (in cents)
+- `expected_cash_end` - Calculated expected cash at end
+- `actual_cash_end` - Actual counted cash at end
+- `status` - Shift status: `open`, `closed`
+
+**Unique Constraint**:
+- `idx_shifts_user_open` - A user can have only one open shift at a time
+
+**Business Rule**: Orders can only be created if cashier has an active shift
+
+---
+
+### cash_transactions
+**Cash drawer adjustments**
+
+Location: `sqlc/migrations/000014_create_shifts_and_cash_transactions_tables.up.sql:21-30`
+
+```sql
+CREATE TABLE cash_transactions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    shift_id UUID NOT NULL REFERENCES shifts(id),
+    user_id UUID NOT NULL REFERENCES users(id),
+    amount BIGINT NOT NULL,
+    type cash_transaction_type NOT NULL,
+    category VARCHAR(50) NOT NULL,
+    description TEXT,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+```
+
+**Fields**:
+- `type` - Transaction type: `cash_in`, `cash_out`
+- `category` - Transaction category: expense, drop, float, loan
+- `amount` - Transaction amount (in cents)
+- `description` - Notes
+
+**Examples**:
+- Cash drop (moving cash to safe): `cash_out`, category: `drop`
+- Add float (adding change): `cash_in`, category: `float`
+- Pay expense: `cash_out`, category: `expense`
+
+---
+
+## Promotion Tables
+
+### promotions
+**Marketing promotions and discounts**
+
+Location: `sqlc/migrations/000001_init.up.sql:80-93`
+
+```sql
+CREATE TABLE promotions (
+  id UUID PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  scope promotion_scope NOT NULL DEFAULT 'ORDER',
+  discount_type discount_type NOT NULL,
+  discount_value NUMERIC(12,2) NOT NULL CHECK (discount_value >= 0),
+  max_discount_amount NUMERIC(12,2) CHECK (max_discount_amount >= 0),
+  start_date TIMESTAMPTZ NOT NULL,
+  end_date TIMESTAMPTZ NOT NULL,
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+**Fields**:
+- `scope` - Promotion scope:
+  - `ORDER` - Discount on entire order
+  - `ITEM` - Discount on specific products
+- `discount_type` - Discount type:
+  - `percentage` - Percentage discount (e.g., 10%)
+  - `fixed_amount` - Fixed discount (e.g., $5 off)
+- `discount_value` - Discount amount
+- `max_discount_amount` - Cap on percentage discounts
+- `start_date` / `end_date` - Validity period
+- `deleted_at` - Soft delete (added in migration `000011`)
+
+**Indexes**:
+- `idx_promotions_dates` - Fast date range queries
+
+---
+
+### promotion_rules
+**Conditions for promotion eligibility**
+
+Location: `sqlc/migrations/000001_init.up.sql:95-103`
+
+```sql
+CREATE TABLE promotion_rules (
+  id UUID PRIMARY KEY,
+  promotion_id UUID NOT NULL REFERENCES promotions(id) ON DELETE CASCADE,
+  rule_type promotion_rule_type NOT NULL,
+  rule_value VARCHAR(255) NOT NULL,
+  description TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+**Rule Types**:
+- `MINIMUM_ORDER_AMOUNT` - Order total must exceed amount
+- `REQUIRED_PRODUCT` - Must include specific product
+- `REQUIRED_CATEGORY` - Must include product from category
+- `ALLOWED_PAYMENT_METHOD` - Only for specific payment method
+- `ALLOWED_ORDER_TYPE` - Only for dine-in or takeaway
+
+**Example Rules**:
+```json
+{
+  "rule_type": "MINIMUM_ORDER_AMOUNT",
+  "rule_value": "50000"
+}
+{
+  "rule_type": "ALLOWED_ORDER_TYPE",
+  "rule_value": "takeaway"
+}
+```
+
+---
+
+### promotion_targets
+**Products/categories eligible for promotion**
+
+Location: `sqlc/migrations/000001_init.up.sql:105-112`
+
+```sql
+CREATE TABLE promotion_targets (
+  id UUID PRIMARY KEY,
+  promotion_id UUID NOT NULL REFERENCES promotions(id) ON DELETE CASCADE,
+  target_type promotion_target_type NOT NULL,
+  target_id VARCHAR(255) NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+**Target Types**:
+- `PRODUCT` - Specific product UUID
+- `CATEGORY` - Entire category ID
+
+**Use Case**: "20% off all beverages" (target_type: CATEGORY, target_id: "1")
+
+---
+
+## Audit & Analytics Tables
+
+### activity_logs
+**Complete audit trail**
+
+Location: `sqlc/migrations/000001_init.up.sql:151-159`
+
+```sql
+CREATE TABLE activity_logs (
+  id UUID PRIMARY KEY,
+  user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  action_type log_action_type NOT NULL,
+  entity_type log_entity_type NOT NULL,
+  entity_id VARCHAR(255) NOT NULL,
+  details JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+**Fields**:
+- `action_type` - Action performed:
+  - CREATE, UPDATE, DELETE, CANCEL, APPLY_PROMOTION, PROCESS_PAYMENT
+  - Additional actions from migration `000017`
+- `entity_type` - Entity affected:
+  - PRODUCT, CATEGORY, PROMOTION, ORDER, USER
+- `entity_id` - ID of affected entity
+- `details` - JSONB with change details
+
+**Indexes**:
+- `idx_activity_logs_user_id` - User activity history
+- `idx_activity_logs_entity` - Entity change history
+
+**Example Log Entry**:
+```json
+{
+  "user_id": "uuid",
+  "action_type": "UPDATE",
+  "entity_type": "PRODUCT",
+  "entity_id": "product-uuid",
+  "details": {
+    "field": "price",
+    "old_value": "10.00",
+    "new_value": "12.00"
+  }
+}
+```
+
+---
+
+### stock_history
+**Product inventory tracking**
+
+Location: `sqlc/migrations/000015_create_stock_history_table.up.sql:3-14`
+
+```sql
+CREATE TABLE stock_history (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    change_amount INTEGER NOT NULL,
+    previous_stock INTEGER NOT NULL,
+    current_stock INTEGER NOT NULL,
+    change_type stock_change_type NOT NULL,
+    reference_id UUID,
+    note TEXT,
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+**Fields**:
+- `change_amount` - Stock change (positive or negative)
+- `previous_stock` - Stock before change
+- `current_stock` - Stock after change
+- `change_type` - Change reason:
+  - `sale` - Sold to customer
+  - `restock` - Inventory replenishment
+  - `correction` - Manual adjustment
+  - `return` - Customer return
+  - `damage` - Damaged/expired product
+- `reference_id` - Related entity (e.g., order_id for sales)
+- `created_by` - User who made the change
+
+**Indexes**:
+- `idx_stock_history_product_id` - Product history
+- `idx_stock_history_created_at` - Time-based queries
+
+---
+
+### settings
+**Application configuration**
+
+Location: `sqlc/migrations/000013_create_settings_table.up.sql:1-6`
+
+```sql
+CREATE TABLE IF NOT EXISTS settings (
+    key VARCHAR(50) PRIMARY KEY,
+    value TEXT NOT NULL,
+    description TEXT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+**Default Settings** (from migration `000013:9-13`):
+- `app_name` - Application name
+- `app_logo` - Logo URL
+- `footer_text` - Footer text
+- `theme_color` - Primary color (hex)
+
+**Additional Settings** (configurable):
+- Printer settings (IP, port, paper width)
+- Receipt format
+- Tax rates
+- Business information
+
+---
+
+## Enums (Custom Types)
+
+Location: `sqlc/migrations/000001_init.up.sql:2-20`
+
+### user_role
+```sql
+CREATE TYPE user_role AS ENUM ('admin', 'cashier', 'manager');
+```
+
+**Hierarchy**:
+- **admin** - Full access
+- **manager** - Product, reports, settings
+- **cashier** - Orders, POS operations
+
+### order_type
+```sql
+CREATE TYPE order_type AS ENUM ('dine_in', 'takeaway');
+```
+
+### order_status
+```sql
+CREATE TYPE order_status AS ENUM ('open', 'in_progress', 'served', 'paid', 'cancelled');
+```
+
+**Workflow**:
+1. `open` - Order created
+2. `in_progress` - Being prepared
+3. `served` - Ready for customer
+4. `paid` - Payment completed
+5. `cancelled` - Order cancelled
+
+### discount_type
+```sql
+CREATE TYPE discount_type AS ENUM ('percentage', 'fixed_amount');
+```
+
+### promotion_scope
+```sql
+CREATE TYPE promotion_scope AS ENUM ('ORDER', 'ITEM');
+```
+
+### promotion_target_type
+```sql
+CREATE TYPE promotion_target_type AS ENUM ('PRODUCT', 'CATEGORY');
+```
+
+### promotion_rule_type
+```sql
+CREATE TYPE promotion_rule_type AS ENUM (
+  'MINIMUM_ORDER_AMOUNT',
+  'REQUIRED_PRODUCT',
+  'REQUIRED_CATEGORY',
+  'ALLOWED_PAYMENT_METHOD',
+  'ALLOWED_ORDER_TYPE'
+);
+```
+
+### log_action_type
+```sql
+CREATE TYPE log_action_type AS ENUM (
+  'CREATE', 'UPDATE', 'DELETE', 'CANCEL', 'APPLY_PROMOTION', 'PROCESS_PAYMENT'
+);
+```
+
+### log_entity_type
+```sql
+CREATE TYPE log_entity_type AS ENUM (
+  'PRODUCT', 'CATEGORY', 'PROMOTION', 'ORDER', 'USER'
+);
+```
+
+### shift_status
+```sql
+CREATE TYPE shift_status AS ENUM ('open', 'closed');
+```
+
+### cash_transaction_type
+```sql
+CREATE TYPE cash_transaction_type AS ENUM ('cash_in', 'cash_out');
+```
+
+### stock_change_type
+```sql
+CREATE TYPE stock_change_type AS ENUM ('sale', 'restock', 'correction', 'return', 'damage');
+```
+
+---
+
+## Database Functions & Triggers
+
+### Auto-Update Timestamps
+
+Location: `sqlc/migrations/000001_init.up.sql:172-199`
+
+**Function**:
+```sql
+CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+```
+
+**Auto-Applied Trigger**:
+Trigger is automatically created for all tables with `updated_at` column:
+```sql
+CREATE TRIGGER <table>_set_updated_at
+BEFORE UPDATE ON <table>
+FOR EACH ROW
+EXECUTE FUNCTION set_updated_at();
+```
+
+**Benefit**: Developers never need to manually set `updated_at` - it's automatic!
+
+---
+
+### UUID Generation
+
+Location: `sqlc/migrations/000001_init.up.sql:202-214`
+
+**Extension**:
+```sql
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+```
+
+**Default Values**:
+```sql
+ALTER TABLE users ALTER COLUMN id SET DEFAULT gen_random_uuid();
+ALTER TABLE products ALTER COLUMN id SET DEFAULT gen_random_uuid();
+-- ... all UUID-based tables
+```
+
+**Benefit**: No need to generate UUIDs in application code
+
+---
+
+## Indexes for Performance
+
+### Product Search
+```sql
+CREATE INDEX idx_products_name ON products(name);
+```
+Used for: Product search by name
+
+### Promotion Date Filtering
+```sql
+CREATE INDEX idx_promotions_dates ON promotions(start_date, end_date);
+```
+Used for: Finding active promotions
+
+### Order Queries
+```sql
+CREATE INDEX idx_orders_status ON orders(status);
+CREATE INDEX idx_orders_created_at ON orders(created_at);
+CREATE INDEX idx_orders_payment_gateway_reference ON orders(payment_gateway_reference);
+```
+Used for:
+- Status filtering (all paid orders)
+- Date range reports
+- Midtrans webhook lookups
+
+### Activity Logs
+```sql
+CREATE INDEX idx_activity_logs_user_id ON activity_logs(user_id);
+CREATE INDEX idx_activity_logs_entity ON activity_logs(entity_type, entity_id);
+```
+Used for:
+- User activity history
+- Entity change tracking
+
+### Stock History
+```sql
+CREATE INDEX idx_stock_history_product_id ON stock_history(product_id);
+CREATE INDEX idx_stock_history_created_at ON stock_history(created_at);
+```
+Used for:
+- Product inventory reports
+- Historical stock analysis
+
+### Shift Management
+```sql
+CREATE UNIQUE INDEX idx_shifts_user_open ON shifts (user_id) WHERE status = 'open';
+```
+Used for:
+- Ensuring one open shift per user
+- Fast active shift lookup
+
+---
+
+## Constraints & Data Integrity
+
+### Foreign Key Cascades
+
+**CASCADE (delete children)**:
+- `order_items` → `orders` (delete items when order deleted)
+- `order_item_options` → `order_items`
+- `product_options` → `products`
+- `promotion_rules` → `promotions`
+- `promotion_targets` → `promotions`
+
+**RESTRICT (prevent deletion)**:
+- `order_items` → `products` (cannot delete products used in orders)
+- `order_item_options` → `product_options`
+
+**SET NULL (preserve records)**:
+- `orders` → `users` (keep orders if user deleted)
+- `orders` → `promotions` (keep orders if promotion deleted)
+- `products` → `categories` (keep products if category deleted)
+- `activity_logs` → `users` (keep logs if user deleted)
+
+### Check Constraints
+
+**Prevent Negative Values**:
+```sql
+CHECK (price >= 0)
+CHECK (stock >= 0)
+CHECK (gross_total >= 0)
+CHECK (quantity > 0)
+```
+
+**Business Rules**:
+- Quantities must be positive
+- Prices cannot be negative
+- Stock cannot go below zero
+
+### Unique Constraints
+
+- `users.username` - Unique usernames
+- `users.email` - Unique emails
+- `categories.name` - No duplicate category names
+- `payment_methods.name` - Unique payment method names
+- `cancellation_reasons.reason` - Unique cancellation reasons
+
+---
+
+## Migration Management
+
+### Migration Files
+
+Migrations are stored in: `sqlc/migrations/`
+
+**Naming Convention**: `<version>_<description>.<up|down>.sql`
+
+Examples:
+- `000001_init.up.sql` - Initial schema
+- `000005_alter_products_add_deleted_at.up.sql` - Soft delete products
+- `000012_alter_orders_add_payment_url.up.sql` - Add Midtrans URL
+- `000014_create_shifts_and_cash_transactions_tables.up.sql` - Shift management
+
+### Running Migrations
+
+**Apply All Migrations**:
+```bash
+make migrate-up
+```
+
+**Rollback All**:
+```bash
+make migrate-down
+```
+
+**Rollback One**:
+```bash
+make migrate-down-one
+```
+
+**Check Version**:
+```bash
+make migrate-version
+```
+
+**Create New Migration**:
+```bash
+make migrate-create name=add_tax_settings
+```
+
+**Force Version** (if stuck):
+```bash
+make migrate-force version=14
+```
+
+### Embedded Migrations
+
+Migrations are embedded in the Go binary:
+
+**Location**: `server/server.go:102`
+```go
+db, err := database.NewDatabase(cfg, log, migrations.FS)
+```
+
+**Benefit**: Single binary deployment with migrations included
+
+---
+
+## Querying with sqlc
+
+### How sqlc Works
+
+1. Write SQL queries in `.sql` files
+2. Add sqlc annotations
+3. Run `make sqlc-generate`
+4. Get type-safe Go code
+
+### Example Query
+
+**SQL File**: `sqlc/queries/users.sql`
+```sql
+-- name: GetUserByEmail :one
+SELECT id, username, email, role, is_active, created_at
+FROM users
+WHERE email = $1 AND deleted_at IS NULL
+LIMIT 1;
+```
+
+**Generated Go Code**: `internal/user/repository/users.sql.go`
+```go
+func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error)
+```
+
+**Usage**:
+```go
+user, err := q.GetUserByEmail(ctx, "admin@example.com")
+if err != nil {
+    return err
+}
+fmt.Println(user.Username)
+```
+
+### Transaction Pattern
+
+```go
+err := store.ExecTx(ctx, func(q *repository.Queries) error {
+    // Multiple queries in transaction
+    order, err := q.CreateOrder(ctx, orderParams)
+    if err != nil {
+        return err // Automatic rollback
+    }
+    
+    err = q.UpdateStock(ctx, stockParams)
+    if err != nil {
+        return err // Automatic rollback
+    }
+    
+    return nil // Commit
+})
+```
+
+---
+
+## Data Types & Precision
+
+### NUMERIC(12,2)
+**Used for**: All monetary values
+
+- **12 digits total** (including decimals)
+- **2 decimal places**
+- Range: -9999999999.99 to 9999999999.99
+- No floating-point errors
+
+**Example**: Price of $12,345.67 stored as 1234567 (cents)
+
+### BIGINT
+**Used for**: Cash amounts in cents
+
+- **8-byte integer**
+- Range: -9,223,372,036,854,775,808 to 9,223,372,036,854,775,807
+- Store cents to avoid decimals
+
+**Example**: $100.00 stored as 10000
+
+### TIMESTAMPTZ
+**Used for**: All timestamps
+
+- Stores with timezone
+- Converts to UTC internally
+- Returns in client's timezone
+
+### JSONB
+**Used for**: activity_logs.details
+
+- Binary JSON storage
+- Indexable
+- Queryable with JSON operators
+- Flexible schema
+
+### UUID
+**Used for**: Primary keys (except serials)
+
+- 128-bit identifier
+- Globally unique
+- Version 4 (random)
+- Better for distributed systems
+
+---
+
+## Database Connection
+
+### Connection Pooling
+
+**Driver**: pgx/v5
+**Pool Configuration**: `pkg/database/database.go`
+
+```go
+config, err := pgxpool.ParseConfig(databaseURL)
+config.MaxConns = 25
+config.MinConns = 5
+config.MaxConnLifetime = time.Hour
+config.MaxConnIdleTime = 30 * time.Minute
+```
+
+### Environment Variables
+
+From `.env`:
+```bash
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=postgres
+DB_PASSWORD=your_password
+DB_NAME=pos_kasir
+DB_SSLMODE=disable
+```
+
+**Makefile** (line 9):
+```makefile
+DB_URL := postgres://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=$(DB_SSLMODE)
+```
+
+---
+
+## Best Practices
+
+### 1. Always Use Transactions
+- Use `store.ExecTx()` for multi-step operations
+- Ensures data consistency
+
+### 2. Soft Deletes
+- Products, users, promotions use `deleted_at`
+- Preserves historical data
+- Allows restoration
+
+### 3. Historical Pricing
+- `order_items.price_at_sale` captures price at time of order
+- Product price changes don't affect past orders
+
+### 4. Audit Everything
+- Log all significant actions to `activity_logs`
+- Track who, what, when for compliance
+
+### 5. Use Enums
+- Ensures valid values
+- Self-documenting schema
+- Type-safe in Go
+
+### 6. Index Strategically
+- Index foreign keys
+- Index frequently filtered columns
+- Don't over-index (slows writes)
+
+---
+
+## Next Steps
+
+- [Architecture](/development/architecture) - Understand the application structure
+- [Tech Stack](/development/tech-stack) - Explore the technologies used
+- [Contributing Guide](/development/contributing) - Set up your development environment

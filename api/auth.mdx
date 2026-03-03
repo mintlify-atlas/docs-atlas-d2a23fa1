@@ -1,0 +1,316 @@
+---
+title: 'Authentication'
+description: 'User authentication and profile management endpoints'
+---
+
+## Login
+
+<CodeBlock title="POST /api/v1/auth/login">
+Authenticate user and return access/refresh tokens via cookies and response body.
+</CodeBlock>
+
+### Request Body
+
+<ParamField body="email" type="string" required>
+  User email address
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  User password (min 8 characters)
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  <ResponseField name="expired" type="string">
+    Token expiration timestamp
+  </ResponseField>
+  
+  <ResponseField name="profile" type="object">
+    <ResponseField name="id" type="string">
+      User ID (UUID)
+    </ResponseField>
+    
+    <ResponseField name="username" type="string">
+      Username
+    </ResponseField>
+    
+    <ResponseField name="email" type="string">
+      Email address
+    </ResponseField>
+    
+    <ResponseField name="role" type="string">
+      User role: `admin`, `manager`, or `cashier`
+    </ResponseField>
+    
+    <ResponseField name="avatar" type="string">
+      Avatar URL
+    </ResponseField>
+    
+    <ResponseField name="is_active" type="boolean">
+      Account active status
+    </ResponseField>
+    
+    <ResponseField name="created_at" type="string">
+      Account creation timestamp
+    </ResponseField>
+  </ResponseField>
+</ResponseField>
+
+### Example
+
+```bash
+curl -X POST https://localhost:8080/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "admin@example.com",
+    "password": "password123"
+  }'
+```
+
+<ResponseExample>
+```json
+{
+  "message": "Success",
+  "data": {
+    "expired": "2024-03-04T10:00:00Z",
+    "profile": {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "username": "admin",
+      "email": "admin@example.com",
+      "role": "admin",
+      "avatar": "https://storage.example.com/avatars/admin.jpg",
+      "is_active": true,
+      "created_at": "2024-01-01T00:00:00Z"
+    }
+  }
+}
+```
+</ResponseExample>
+
+---
+
+## Logout
+
+<CodeBlock title="POST /api/v1/auth/logout">
+Clear access and refresh token cookies to log out the current user.
+
+**Authentication Required:** Yes
+
+**Roles:** `admin`, `manager`, `cashier`
+</CodeBlock>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+### Example
+
+```bash
+curl -X POST https://localhost:8080/api/v1/auth/logout \
+  -H "Cookie: access_token=YOUR_TOKEN"
+```
+
+<ResponseExample>
+```json
+{
+  "message": "Successfully logged out"
+}
+```
+</ResponseExample>
+
+---
+
+## Get Current Profile
+
+<CodeBlock title="GET /api/v1/auth/me">
+Get detailed profile information for the authenticated user session.
+
+**Authentication Required:** Yes
+
+**Roles:** `admin`, `manager`, `cashier`
+</CodeBlock>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Profile information (see Login response for schema)
+</ResponseField>
+
+### Example
+
+```bash
+curl -X GET https://localhost:8080/api/v1/auth/me \
+  -H "Cookie: access_token=YOUR_TOKEN"
+```
+
+---
+
+## Update Password
+
+<CodeBlock title="PUT /api/v1/auth/me/password">
+Update the password for the current user session.
+
+**Authentication Required:** Yes
+
+**Roles:** `admin`, `manager`, `cashier`
+</CodeBlock>
+
+### Request Body
+
+<ParamField body="old_password" type="string" required>
+  Current password (8-32 characters)
+</ParamField>
+
+<ParamField body="new_password" type="string" required>
+  New password (8-32 characters)
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+### Example
+
+```bash
+curl -X PUT https://localhost:8080/api/v1/auth/me/password \
+  -H "Content-Type: application/json" \
+  -H "Cookie: access_token=YOUR_TOKEN" \
+  -d '{
+    "old_password": "oldpass123",
+    "new_password": "newpass456"
+  }'
+```
+
+---
+
+## Update Avatar
+
+<CodeBlock title="PUT /api/v1/auth/me/avatar">
+Upload and update the profile picture for the current user.
+
+**Authentication Required:** Yes
+
+**Roles:** `admin`, `manager`, `cashier`
+</CodeBlock>
+
+### Request Body (multipart/form-data)
+
+<ParamField body="avatar" type="file" required>
+  Avatar image file (square image, minimum 300x300 pixels)
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Updated profile information
+</ResponseField>
+
+### Example
+
+```bash
+curl -X PUT https://localhost:8080/api/v1/auth/me/avatar \
+  -H "Cookie: access_token=YOUR_TOKEN" \
+  -F "avatar=@/path/to/avatar.jpg"
+```
+
+---
+
+## Refresh Token
+
+<CodeBlock title="POST /api/v1/auth/refresh">
+Issue a new access token using a valid refresh token cookie.
+</CodeBlock>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  <ResponseField name="expired" type="string">
+    New token expiration timestamp
+  </ResponseField>
+  
+  <ResponseField name="profile" type="object">
+    User profile information
+  </ResponseField>
+</ResponseField>
+
+### Example
+
+```bash
+curl -X POST https://localhost:8080/api/v1/auth/refresh \
+  -H "Cookie: refresh_token=YOUR_REFRESH_TOKEN"
+```
+
+---
+
+## Add New User
+
+<CodeBlock title="POST /api/v1/auth/add">
+Register a new user with a specific role.
+
+**Authentication Required:** Yes
+
+**Roles:** `admin`
+</CodeBlock>
+
+### Request Body
+
+<ParamField body="username" type="string" required>
+  Username (3-32 characters)
+</ParamField>
+
+<ParamField body="email" type="string" required>
+  Email address
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  Password (8-32 characters)
+</ParamField>
+
+<ParamField body="role" type="string" required>
+  User role: `admin`, `manager`, or `cashier`
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Created user profile information
+</ResponseField>
+
+### Example
+
+```bash
+curl -X POST https://localhost:8080/api/v1/auth/add \
+  -H "Content-Type: application/json" \
+  -H "Cookie: access_token=YOUR_TOKEN" \
+  -d '{
+    "username": "newuser",
+    "email": "newuser@example.com",
+    "password": "password123",
+    "role": "cashier"
+  }'
+```

@@ -1,0 +1,465 @@
+---
+title: Transactions
+description: Transaction history tracking, order receipts, and transaction queries
+---
+
+## Overview
+
+The POS Kasir system tracks all transactions through the order lifecycle. Every completed (paid) order becomes a transaction record with detailed information about items, payments, and totals.
+
+## Transaction Structure
+
+Transactions in POS Kasir are represented by orders with `paid` status. Each transaction includes:
+
+- Order details (ID, type, timestamps)
+- Customer information (if applicable)
+- Line items with quantities and prices
+- Payment method and payment details
+- Discounts and promotions applied
+- Gross total, discount amount, and net total
+
+## Viewing Transactions
+
+### Get Transaction History
+
+Retrieve transaction history using the orders list endpoint with status filter.
+
+**Endpoint:** `GET /orders?statuses=paid`
+
+**Required Role:** Admin, Manager, Cashier
+
+**Query Parameters:**
+- `page` - Page number (default: 1)
+- `limit` - Items per page (default: 10, max: 100)
+- `statuses` - Filter by statuses (use `paid` for transactions)
+- `user_id` - Filter by cashier/user ID
+
+**Example Request:**
+```
+GET /orders?statuses=paid&page=1&limit=20&user_id=550e8400-e29b-41d4-a716-446655440000
+```
+
+**Response:**
+```json
+{
+  "message": "Orders retrieved successfully",
+  "data": {
+    "orders": [
+      {
+        "id": "880e8400-e29b-41d4-a716-446655440003",
+        "user_id": "550e8400-e29b-41d4-a716-446655440000",
+        "type": "dine_in",
+        "status": "paid",
+        "net_total": 75000,
+        "queue_number": "D001",
+        "is_paid": true,
+        "created_at": "2024-03-03T10:00:00Z",
+        "items": [
+          {
+            "id": "aa0e8400-e29b-41d4-a716-446655440005",
+            "product_id": "550e8400-e29b-41d4-a716-446655440000",
+            "product_name": "Espresso",
+            "quantity": 2,
+            "price_at_sale": 25000,
+            "subtotal": 50000,
+            "options": [
+              {
+                "product_option_id": "660e8400-e29b-41d4-a716-446655440001",
+                "option_name": "Large",
+                "price_at_sale": 5000
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "limit": 20,
+      "total_items": 150,
+      "total_pages": 8
+    }
+  }
+}
+```
+
+### Get Transaction Details
+
+Retrieve detailed information for a specific transaction.
+
+**Endpoint:** `GET /orders/{id}`
+
+**Required Role:** Admin, Manager, Cashier
+
+**Response:**
+```json
+{
+  "message": "Order retrieved successfully",
+  "data": {
+    "id": "880e8400-e29b-41d4-a716-446655440003",
+    "user_id": "550e8400-e29b-41d4-a716-446655440000",
+    "type": "dine_in",
+    "status": "paid",
+    "gross_total": 80000,
+    "discount_amount": 5000,
+    "net_total": 75000,
+    "payment_method_id": 1,
+    "cash_received": 100000,
+    "change_due": 25000,
+    "applied_promotion_id": "bb0e8400-e29b-41d4-a716-446655440006",
+    "payment_gateway_reference": null,
+    "created_at": "2024-03-03T10:00:00Z",
+    "updated_at": "2024-03-03T10:05:00Z",
+    "items": [
+      {
+        "id": "aa0e8400-e29b-41d4-a716-446655440005",
+        "product_id": "550e8400-e29b-41d4-a716-446655440000",
+        "product_name": "Espresso",
+        "quantity": 2,
+        "price_at_sale": 25000,
+        "subtotal": 50000,
+        "options": [
+          {
+            "product_option_id": "660e8400-e29b-41d4-a716-446655440001",
+            "option_name": "Large",
+            "price_at_sale": 5000
+          }
+        ]
+      },
+      {
+        "id": "aa0e8400-e29b-41d4-a716-446655440006",
+        "product_id": "770e8400-e29b-41d4-a716-446655440002",
+        "product_name": "Cappuccino",
+        "quantity": 1,
+        "price_at_sale": 30000,
+        "subtotal": 30000,
+        "options": []
+      }
+    ]
+  }
+}
+```
+
+## Transaction Components
+
+### Order Information
+
+- **id** - Unique transaction identifier (UUID)
+- **user_id** - Cashier who processed the transaction
+- **type** - Order type (dine_in, takeaway)
+- **status** - Always `paid` for completed transactions
+- **queue_number** - Order queue number for customer reference
+- **created_at** - Transaction creation timestamp
+- **updated_at** - Last update timestamp
+
+### Financial Details
+
+- **gross_total** - Total before discounts (in cents/smallest currency unit)
+- **discount_amount** - Total discount applied
+- **net_total** - Final amount paid by customer
+- **applied_promotion_id** - ID of promotion used (if any)
+
+### Payment Information
+
+- **payment_method_id** - Payment method (1=Cash, 2=QRIS, 3=GoPay)
+- **cash_received** - Amount received for cash payments
+- **change_due** - Change returned to customer
+- **payment_gateway_reference** - Midtrans transaction ID for digital payments
+
+### Line Items
+
+Each transaction includes detailed line items:
+
+```go title="internal/orders/dto.go:64-72"
+type OrderItemResponse struct {
+    ID          uuid.UUID                 `json:"id"`
+    ProductID   uuid.UUID                 `json:"product_id"`
+    ProductName string                    `json:"product_name,omitempty"`
+    Quantity    int32                     `json:"quantity"`
+    PriceAtSale int64                     `json:"price_at_sale"`
+    Subtotal    int64                     `json:"subtotal"`
+    Options     []OrderItemOptionResponse `json:"options,omitempty"`
+}
+```
+
+**Key Fields:**
+- **price_at_sale** - Price snapshot at transaction time (historical price)
+- **subtotal** - Line item total (quantity × price_at_sale + options)
+- **options** - Product variants/add-ons with their prices at sale time
+
+## Receipt Generation
+
+### Receipt Data Structure
+
+Use transaction details to generate receipts:
+
+```
+=====================================
+         RESTAURANT NAME
+        123 Main Street
+       Tel: (123) 456-7890
+=====================================
+
+Date: 2024-03-03 10:05:00
+Order #: D001
+Cashier: John Doe
+Type: Dine In
+
+-------------------------------------
+ITEM                   QTY     PRICE
+-------------------------------------
+Espresso (Large)         2    60,000
+  - Large                      10,000
+Cappuccino               1    30,000
+-------------------------------------
+
+Gross Total:                  80,000
+Discount (10% OFF):          (5,000)
+-------------------------------------
+NET TOTAL:                    75,000
+
+Payment Method: Cash
+Cash Received:               100,000
+Change:                       25,000
+
+=====================================
+      THANK YOU FOR VISITING
+=====================================
+```
+
+### Generating Receipt from API
+
+1. **Get Transaction Details**
+   ```
+   GET /orders/{id}
+   ```
+
+2. **Format Receipt**
+   - Parse transaction data
+   - Format currency values
+   - Generate receipt text/HTML/PDF
+
+3. **Print or Display**
+   - Send to thermal printer
+   - Display on screen
+   - Email to customer
+
+## Transaction Queries
+
+### Filter by Date Range
+
+While there's no dedicated date range endpoint, you can filter transactions using pagination and timestamps:
+
+```javascript
+// Client-side filtering example
+const transactions = await fetch(
+  '/orders?statuses=paid&page=1&limit=100'
+)
+  .then(res => res.json())
+  .then(data => data.data.orders.filter(order => {
+    const orderDate = new Date(order.created_at)
+    return orderDate >= startDate && orderDate <= endDate
+  }))
+```
+
+For server-side date filtering, use the **Reports** endpoints:
+
+```
+GET /reports/sales?start_date=2024-03-01&end_date=2024-03-31
+```
+
+### Filter by Cashier
+
+```
+GET /orders?statuses=paid&user_id=550e8400-e29b-41d4-a716-446655440000
+```
+
+**Note:** Cashiers automatically see only their own transactions due to role-based filtering.
+
+### Filter by Payment Method
+
+The API doesn't have a direct payment method filter. Retrieve transactions and filter client-side:
+
+```javascript
+const cashTransactions = transactions.filter(
+  t => t.payment_method_id === 1
+)
+
+const digitalTransactions = transactions.filter(
+  t => [2, 3].includes(t.payment_method_id)
+)
+```
+
+## Transaction Analytics
+
+For detailed transaction analytics, use the **Reports API**:
+
+- **Sales Reports** - Aggregated sales data by date
+- **Product Performance** - Best-selling products
+- **Payment Method Performance** - Payment method usage
+- **Cashier Performance** - Transactions per cashier
+
+See [Reports & Analytics](/features/reports-analytics) for details.
+
+## Price Snapshots
+
+### Historical Pricing
+
+Transactions store `price_at_sale` for each item, preserving pricing at transaction time:
+
+```json
+{
+  "product_id": "550e8400-e29b-41d4-a716-446655440000",
+  "product_name": "Espresso",
+  "price_at_sale": 25000,
+  "current_price": 28000  // Product price may have changed
+}
+```
+
+**Benefits:**
+- Accurate historical reporting
+- Price change tracking
+- Audit trail for accounting
+- Protection against retroactive price changes
+
+## Transaction List Response
+
+```go title="internal/orders/dto.go:92-102"
+type OrderListResponse struct {
+    ID          uuid.UUID              `json:"id"`
+    UserID      *uuid.UUID             `json:"user_id,omitempty"`
+    Type        repository.OrderType   `json:"type"`
+    Status      repository.OrderStatus `json:"status"`
+    NetTotal    int64                  `json:"net_total"`
+    CreatedAt   time.Time              `json:"created_at"`
+    Items       []OrderItemResponse    `json:"items,omitempty"`
+    QueueNumber string                 `json:"queue_number,omitempty"`
+    IsPaid      bool                   `json:"is_paid"`
+}
+```
+
+## Common Use Cases
+
+### Daily Transaction Summary
+
+```javascript
+// Get today's transactions
+const today = new Date().toISOString().split('T')[0]
+const transactions = await fetch(
+  `/orders?statuses=paid&limit=100`
+).then(res => res.json())
+
+// Filter for today
+const todayTransactions = transactions.data.orders.filter(order => 
+  order.created_at.startsWith(today)
+)
+
+// Calculate totals
+const summary = {
+  count: todayTransactions.length,
+  total: todayTransactions.reduce((sum, t) => sum + t.net_total, 0),
+  avgTransaction: total / count,
+  cashCount: todayTransactions.filter(t => t.payment_method_id === 1).length,
+  digitalCount: todayTransactions.filter(t => [2,3].includes(t.payment_method_id)).length
+}
+```
+
+### End of Shift Report
+
+```javascript
+// Get cashier's shift transactions
+const shiftStart = '2024-03-03T08:00:00Z'
+const shiftEnd = '2024-03-03T16:00:00Z'
+
+const shiftTransactions = await fetch(
+  `/orders?statuses=paid&user_id=${cashierId}`
+).then(res => res.json())
+.then(data => data.data.orders.filter(order => {
+  const time = new Date(order.created_at)
+  return time >= new Date(shiftStart) && time <= new Date(shiftEnd)
+}))
+
+const report = {
+  totalSales: shiftTransactions.reduce((sum, t) => sum + t.net_total, 0),
+  totalDiscount: shiftTransactions.reduce((sum, t) => sum + t.discount_amount, 0),
+  transactionCount: shiftTransactions.length,
+  cashInDrawer: shiftTransactions
+    .filter(t => t.payment_method_id === 1)
+    .reduce((sum, t) => sum + t.net_total, 0)
+}
+```
+
+### Transaction Receipt Printer
+
+```javascript
+async function printReceipt(orderId) {
+  // Get transaction details
+  const transaction = await fetch(`/orders/${orderId}`)
+    .then(res => res.json())
+    .then(data => data.data)
+  
+  // Format receipt
+  const receipt = formatReceiptText(transaction)
+  
+  // Send to printer
+  await sendToPrinter(receipt)
+}
+
+function formatReceiptText(transaction) {
+  const lines = []
+  lines.push('='.repeat(40))
+  lines.push('RESTAURANT NAME'.padStart(25))
+  lines.push('='.repeat(40))
+  lines.push('')
+  lines.push(`Order: ${transaction.queue_number}`)
+  lines.push(`Date: ${new Date(transaction.created_at).toLocaleString()}`)
+  lines.push('')
+  lines.push('-'.repeat(40))
+  
+  // Items
+  transaction.items.forEach(item => {
+    const itemLine = `${item.product_name.padEnd(20)} ${item.quantity} ${formatCurrency(item.subtotal)}`
+    lines.push(itemLine)
+    
+    item.options.forEach(opt => {
+      lines.push(`  + ${opt.option_name.padEnd(18)} ${formatCurrency(opt.price_at_sale)}`)
+    })
+  })
+  
+  lines.push('-'.repeat(40))
+  lines.push(`Gross Total: ${formatCurrency(transaction.gross_total)}`.padStart(40))
+  lines.push(`Discount: (${formatCurrency(transaction.discount_amount)})`.padStart(40))
+  lines.push(`NET TOTAL: ${formatCurrency(transaction.net_total)}`.padStart(40))
+  
+  if (transaction.cash_received) {
+    lines.push('')
+    lines.push(`Cash: ${formatCurrency(transaction.cash_received)}`.padStart(40))
+    lines.push(`Change: ${formatCurrency(transaction.change_due)}`.padStart(40))
+  }
+  
+  lines.push('')
+  lines.push('='.repeat(40))
+  lines.push('THANK YOU!'.padStart(25))
+  lines.push('='.repeat(40))
+  
+  return lines.join('\n')
+}
+```
+
+## Best Practices
+
+1. **Price Consistency** - Always use `price_at_sale` from transactions, not current product prices
+2. **Currency Handling** - Store amounts in smallest unit (cents) to avoid float precision issues
+3. **Receipt Storage** - Consider storing formatted receipts for quick reprints
+4. **Pagination** - Use pagination for large transaction lists to improve performance
+5. **Date Filtering** - For date range queries, use Reports API instead of filtering all transactions
+6. **Audit Trails** - Transactions are immutable; use activity logs to track any modifications
+7. **Receipt Printing** - Implement retry logic for printer failures
+8. **Transaction Export** - Provide CSV/Excel export for accounting software integration
+
+## Related Features
+
+- [Orders & POS](/features/orders-and-pos) - Order creation and management
+- [Payments](/features/payments) - Payment processing details
+- [Reports & Analytics](/features/reports-analytics) - Transaction analytics and reporting
+- [Activity Logs](/features/activity-logs) - Audit trails for transaction modifications

@@ -1,0 +1,408 @@
+---
+title: ESC/POS Printer Setup
+description: Configure and integrate thermal receipt printers using ESC/POS protocol
+---
+
+POS Kasir supports ESC/POS thermal printers for printing receipts. ESC/POS is the standard protocol used by most thermal receipt printers.
+
+## Overview
+
+The printer integration supports:
+- Network (TCP/IP) printer connections
+- Standard ESC/POS commands
+- Text formatting (bold, size, alignment)
+- Automatic paper cutting
+- Receipt buffering for testing
+
+## Supported Printers
+
+Any ESC/POS compatible thermal printer, including:
+- Epson TM series (TM-T20, TM-T82, TM-M30)
+- Star TSP series
+- Citizen CT-S series
+- GOOJPRT, QPOS, and other generic thermal printers
+- Cloud printers supporting socket connections
+
+## Printer Setup
+
+### Network Printer Configuration
+
+1. **Connect printer to network**:
+   - Via Ethernet cable, or
+   - Via WiFi (check printer manual for setup)
+
+2. **Find printer IP address**:
+   - Print network configuration (usually hold feed button during power on)
+   - Or check your router's DHCP client list
+   - Note the IP address (e.g., `192.168.1.100`)
+
+3. **Configure static IP** (recommended):
+   - Access printer settings via web interface or utility software
+   - Set static IP to prevent address changes
+   - Note the port (usually `9100` for ESC/POS)
+
+### Connection String Format
+
+Use one of these formats:
+
+```bash
+# Direct IP and port
+192.168.1.100:9100
+
+# With tcp:// prefix
+tcp://192.168.1.100:9100
+
+# With socket:// prefix
+socket://192.168.1.100:9100
+```
+
+All formats are equivalent - the system automatically strips prefixes.
+
+## Implementation Details
+
+The printer implementation is in `/workspace/source/pkg/escpos/printer.go:27`.
+
+### Creating Printer Instance
+
+```go
+printer, err := escpos.NewPrinter("192.168.1.100:9100")
+if err != nil {
+    log.Fatal("Failed to connect to printer:", err)
+}
+defer printer.Close()
+```
+
+The connection timeout is 5 seconds. See `/workspace/source/pkg/escpos/printer.go:32`.
+
+### Initializing Printer
+
+Always initialize before printing:
+
+```go
+err := printer.Init()
+```
+
+This resets the printer to default settings (normal size, left align, no bold).
+
+## ESC/POS Commands
+
+Available commands are defined in `/workspace/source/pkg/escpos/commands.go`.
+
+### Text Formatting
+
+**Bold text**:
+```go
+printer.SetBold(true)
+printer.WriteString("BOLD TEXT")
+printer.SetBold(false)
+```
+
+**Text size**:
+```go
+// Double height
+printer.SetSize(escpos.DoubleHeightOn)
+
+// Double width
+printer.SetSize(escpos.DoubleWidthOn)
+
+// Double height and width
+printer.SetSize(escpos.DoubleSizeOn)
+
+// Normal size
+printer.SetSize(escpos.NormalSize)
+```
+
+**Text alignment**:
+```go
+// Left align (default)
+printer.SetAlign(escpos.AlignLeft)
+
+// Center align
+printer.SetAlign(escpos.AlignCenter)
+
+// Right align
+printer.SetAlign(escpos.AlignRight)
+```
+
+### Paper Control
+
+**Feed lines**:
+```go
+// Feed 3 blank lines
+printer.Feed(3)
+```
+
+**Cut paper**:
+```go
+// Partial cut (default)
+printer.Cut()
+
+// Full cut
+printer.Write(escpos.CutFull)
+```
+
+The `Cut()` method automatically feeds 3 lines before cutting.
+
+## Receipt Example
+
+Complete receipt printing example:
+
+```go
+func PrintReceipt(printer escpos.Printer, order Order) error {
+    // Initialize printer
+    if err := printer.Init(); err != nil {
+        return err
+    }
+
+    // Header - centered, bold, large
+    printer.SetAlign(escpos.AlignCenter)
+    printer.SetBold(true)
+    printer.SetSize(escpos.DoubleSizeOn)
+    printer.WriteString("MY STORE\n")
+    
+    // Store details - centered, normal
+    printer.SetSize(escpos.NormalSize)
+    printer.SetBold(false)
+    printer.WriteString("Jl. Example No. 123\n")
+    printer.WriteString("Tel: 021-12345678\n")
+    printer.Feed(1)
+
+    // Separator
+    printer.SetAlign(escpos.AlignLeft)
+    printer.WriteString("================================\n")
+    
+    // Date and order info
+    printer.WriteString(fmt.Sprintf("Date: %s\n", time.Now().Format("02/01/2006 15:04")))
+    printer.WriteString(fmt.Sprintf("Order: %s\n", order.ID))
+    printer.WriteString("================================\n")
+
+    // Items
+    for _, item := range order.Items {
+        // Item name
+        printer.WriteString(fmt.Sprintf("%s\n", item.Name))
+        
+        // Quantity x Price = Total (right aligned)
+        line := fmt.Sprintf("%d x %s = %s\n",
+            item.Quantity,
+            formatRupiah(item.Price),
+            formatRupiah(item.Quantity * item.Price),
+        )
+        printer.WriteString(line)
+    }
+    
+    // Separator
+    printer.WriteString("================================\n")
+    
+    // Total - bold
+    printer.SetBold(true)
+    printer.WriteString(fmt.Sprintf("TOTAL: %s\n", formatRupiah(order.Total)))
+    printer.SetBold(false)
+    
+    // Payment info
+    printer.WriteString(fmt.Sprintf("Payment: %s\n", order.PaymentMethod))
+    
+    // Footer - centered
+    printer.Feed(1)
+    printer.SetAlign(escpos.AlignCenter)
+    printer.WriteString("Thank you for your purchase!\n")
+    printer.WriteString("Visit us again\n")
+    
+    // Cut paper
+    printer.Cut()
+    
+    return nil
+}
+```
+
+## Buffer Printer (Testing)
+
+For testing without physical printer, use `BufferPrinter`:
+
+```go
+// Create buffer printer
+bufferPrinter := escpos.NewBufferPrinter()
+
+// Print receipt
+PrintReceipt(bufferPrinter, order)
+
+// Get raw bytes
+rawData := bufferPrinter.Buffer.Bytes()
+
+// Send to actual printer later
+networkPrinter.Write(rawData)
+```
+
+This is useful for:
+- Unit testing print logic
+- Generating print data in one service and printing in another
+- Debugging receipt formatting
+
+## Configuration Best Practices
+
+### Environment Variables
+
+Store printer configuration in `.env`:
+
+```bash
+PRINTER_ADDRESS=192.168.1.100:9100
+PRINTER_ENABLED=true
+PRINTER_TIMEOUT=5000  # milliseconds
+```
+
+### Printer Pool
+
+For high-volume environments, consider connection pooling:
+
+```go
+type PrinterPool struct {
+    address string
+    pool    chan escpos.Printer
+}
+
+func NewPrinterPool(address string, size int) *PrinterPool {
+    pool := make(chan escpos.Printer, size)
+    
+    for i := 0; i < size; i++ {
+        printer, _ := escpos.NewPrinter(address)
+        pool <- printer
+    }
+    
+    return &PrinterPool{address: address, pool: pool}
+}
+
+func (p *PrinterPool) Print(fn func(escpos.Printer) error) error {
+    printer := <-p.pool
+    defer func() { p.pool <- printer }()
+    return fn(printer)
+}
+```
+
+### Error Recovery
+
+Handle printer errors gracefully:
+
+```go
+func PrintWithRetry(printer escpos.Printer, order Order, maxRetries int) error {
+    for i := 0; i < maxRetries; i++ {
+        err := PrintReceipt(printer, order)
+        if err == nil {
+            return nil
+        }
+        
+        log.Printf("Print attempt %d failed: %v", i+1, err)
+        
+        // Reconnect on connection errors
+        if isConnectionError(err) {
+            printer.Close()
+            newPrinter, err := escpos.NewPrinter(printerAddress)
+            if err == nil {
+                printer = newPrinter
+            }
+        }
+        
+        time.Sleep(time.Second * time.Duration(i+1))
+    }
+    return fmt.Errorf("failed after %d retries", maxRetries)
+}
+```
+
+## Troubleshooting
+
+### Cannot Connect to Printer
+
+1. **Verify network connectivity**:
+   ```bash
+   ping 192.168.1.100
+   ```
+
+2. **Check port is accessible**:
+   ```bash
+   telnet 192.168.1.100 9100
+   ```
+   Should connect without errors
+
+3. **Verify firewall** allows outbound connections on printer port
+
+4. **Check printer status**:
+   - Power on
+   - Paper loaded
+   - Cover closed
+   - No error lights
+
+### Prints Garbled Text
+
+1. **Initialize printer** before each receipt:
+   ```go
+   printer.Init()
+   ```
+
+2. **Check character encoding** - use ASCII or UTF-8
+
+3. **Verify ESC/POS compatibility** - some printers have proprietary modes
+
+### Paper Not Cutting
+
+1. Some printers don't support auto-cut
+2. Try full cut instead:
+   ```go
+   printer.Write(escpos.CutFull)
+   ```
+3. Or manual cut - user tears paper manually
+
+### Slow Printing
+
+1. **Network latency** - ensure printer is on same subnet
+2. **Use connection pooling** for multiple receipts
+3. **Optimize receipt content** - fewer formatting changes
+
+## Advanced Features
+
+### QR Code Printing
+
+Some ESC/POS printers support QR codes:
+
+```go
+// QR code command (model-specific)
+qrData := "https://yourstore.com/receipt/123"
+qrCommand := []byte{
+    0x1D, 0x28, 0x6B, // QR code command
+    // ... model-specific parameters
+}
+printer.Write(qrCommand)
+```
+
+<Warning>
+QR code commands vary by printer model. Consult your printer's ESC/POS command manual for specific implementation.
+</Warning>
+
+### Logo Printing
+
+Print bitmap logos (requires conversion to ESC/POS format):
+
+1. Convert logo to monochrome bitmap
+2. Use ESC/POS bitmap commands
+3. Or use manufacturer's logo upload utility
+
+## Command Reference
+
+All commands are defined in `/workspace/source/pkg/escpos/commands.go:12`:
+
+- `Init` - Initialize printer (ESC @)
+- `Cut` - Partial cut (GS V 66 0)
+- `CutFull` - Full cut (GS V 65 0)
+- `BoldOn` - Enable bold (ESC E 1)
+- `BoldOff` - Disable bold (ESC E 0)
+- `DoubleHeightOn` - 2x height (GS ! 0x10)
+- `DoubleWidthOn` - 2x width (GS ! 0x20)
+- `DoubleSizeOn` - 2x both (GS ! 0x30)
+- `NormalSize` - Normal size (GS ! 0x00)
+- `AlignLeft` - Left align (ESC a 0)
+- `AlignCenter` - Center align (ESC a 1)
+- `AlignRight` - Right align (ESC a 2)
+
+Constants:
+- `ESC` = 0x1B
+- `GS` = 0x1D
+- `LF` = 0x0A (line feed)
+
+See full implementation in `/workspace/source/pkg/escpos/`.

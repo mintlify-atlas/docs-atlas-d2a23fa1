@@ -1,0 +1,360 @@
+---
+title: 'Docker Deployment'
+description: 'Deploy POS Kasir using Docker and Docker Compose'
+---
+
+## Overview
+
+POS Kasir provides a complete Docker setup with multi-stage builds for optimized production images. The application uses Docker Compose to orchestrate both backend and frontend services.
+
+## Prerequisites
+
+- Docker Engine 20.10+
+- Docker Compose v2.0+
+- At least 1GB available RAM
+- PostgreSQL database (external or containerized)
+
+## Docker Compose Configuration
+
+The application includes a `docker-compose.yml` file that defines two services:
+
+### Services
+
+**Backend Service**
+- Built from multi-stage Dockerfile using Go 1.25
+- Container name: `pos-backend`
+- Port mapping: `${APP_PORT:-8080}:8080`
+- Resource limits: 0.5 CPU, 512MB RAM
+- Auto-restart enabled
+
+**Frontend Service**
+- Built from web directory
+- Container name: `pos-frontend`
+- Port mapping: `3000:80`
+- Auto-restart enabled
+
+### Network
+
+Both services communicate via a bridge network named `pos-network`.
+
+## Quick Start
+
+### 1. Clone and Configure
+
+```bash
+cd /path/to/pos-kasir
+cp .env.example .env
+cp web/.env.example web/.env
+```
+
+Edit both `.env` files with your configuration. See [Environment Variables](/deployment/environment-variables) for complete reference.
+
+### 2. Build Images
+
+```bash
+docker compose build
+```
+
+This command builds both backend and frontend images using multi-stage builds for optimization.
+
+### 3. Start Services
+
+```bash
+docker compose up -d
+```
+
+The `-d` flag runs containers in detached mode.
+
+### 4. Verify Deployment
+
+```bash
+# Check container status
+docker compose ps
+
+# View logs
+docker compose logs -f
+
+# Check backend health
+curl http://localhost:8080/health
+
+# Check frontend
+curl http://localhost:3000
+```
+
+## Backend Dockerfile
+
+The backend uses a multi-stage build for minimal image size:
+
+```dockerfile
+# Stage 1: Builder
+FROM golang:1.25-alpine AS builder
+WORKDIR /app
+RUN apk add --no-cache git
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o main ./cmd/app/main.go
+
+# Stage 2: Runtime
+FROM alpine:latest
+WORKDIR /root/
+RUN apk --no-cache add ca-certificates tzdata
+ENV TZ=Asia/Jakarta
+COPY --from=builder /app/main .
+EXPOSE 8080
+CMD ["./main"]
+```
+
+### Build Optimizations
+
+- **CGO disabled**: Static binary for better portability
+- **Stripped symbols**: `-ldflags="-s -w"` reduces binary size
+- **Alpine base**: Minimal image (~5MB base)
+- **Timezone**: Pre-configured for Asia/Jakarta
+
+## Management Commands
+
+### Start/Stop Services
+
+```bash
+# Start all services
+docker compose up -d
+
+# Stop all services
+docker compose down
+
+# Restart services
+docker compose restart
+
+# Stop and remove volumes (WARNING: deletes data)
+docker compose down -v
+```
+
+### View Logs
+
+```bash
+# All services
+docker compose logs -f
+
+# Backend only
+docker compose logs -f backend
+
+# Frontend only
+docker compose logs -f frontend
+
+# Last 100 lines
+docker compose logs --tail=100
+```
+
+### Update Application
+
+```bash
+# Pull latest code
+git pull
+
+# Rebuild and restart
+docker compose up -d --build
+```
+
+### Execute Commands
+
+```bash
+# Access backend shell
+docker compose exec backend sh
+
+# Access frontend shell
+docker compose exec frontend sh
+
+# Run database migrations
+docker compose exec backend ./main migrate
+```
+
+## Resource Management
+
+### Current Limits
+
+The backend service has resource constraints defined:
+
+```yaml
+deploy:
+  resources:
+    limits:
+      cpus: '0.50'
+      memory: 512M
+```
+
+### Adjusting Resources
+
+Edit `docker-compose.yml` to modify resource limits based on your server capacity:
+
+```yaml
+deploy:
+  resources:
+    limits:
+      cpus: '1.0'      # Increase CPU limit
+      memory: 1024M    # Increase RAM limit
+    reservations:
+      cpus: '0.25'
+      memory: 256M
+```
+
+<Note>
+Resource limits help prevent a single container from consuming all system resources.
+</Note>
+
+## Database Setup
+
+### External PostgreSQL
+
+If using an external PostgreSQL database, configure in `.env`:
+
+```bash
+DB_HOST=your-postgres-host
+DB_PORT=5432
+DB_USER=your-username
+DB_PASSWORD=your-password
+DB_NAME=pos_kasir
+DB_SSLMODE=require
+```
+
+### Add PostgreSQL to Docker Compose
+
+To run PostgreSQL in Docker, add this service to `docker-compose.yml`:
+
+```yaml
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: pos-postgres
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - pos-network
+    restart: always
+
+volumes:
+  postgres-data:
+```
+
+Then update backend `.env`:
+
+```bash
+DB_HOST=postgres
+DB_PORT=5432
+```
+
+## Production Considerations
+
+<Warning>
+Before deploying to production, ensure you:
+- Set `APP_ENV=production`
+- Use strong random values for `JWT_SECRET`
+- Enable SSL/TLS for database connections
+- Configure proper backup strategies
+- Set up monitoring and logging
+</Warning>
+
+### Security Checklist
+
+- [ ] Change default passwords and secrets
+- [ ] Enable database SSL (`DB_SSLMODE=require`)
+- [ ] Configure firewall rules
+- [ ] Use environment variable injection (not .env files in production)
+- [ ] Enable log aggregation
+- [ ] Set up automated backups
+- [ ] Configure health checks
+- [ ] Use reverse proxy (nginx/Traefik)
+
+### Reverse Proxy Setup
+
+For production, run behind a reverse proxy:
+
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+
+    # Frontend
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    # Backend API
+    location /api {
+        proxy_pass http://localhost:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+
+## Troubleshooting
+
+### Container Won't Start
+
+```bash
+# Check container logs
+docker compose logs backend
+
+# Check container status
+docker compose ps
+
+# Rebuild from scratch
+docker compose down
+docker compose build --no-cache
+docker compose up -d
+```
+
+### Database Connection Issues
+
+```bash
+# Verify database connectivity from container
+docker compose exec backend sh
+ping postgres  # If using containerized DB
+
+# Check environment variables
+docker compose exec backend env | grep DB_
+```
+
+### Port Already in Use
+
+```bash
+# Find process using the port
+sudo lsof -i :8080
+
+# Change port in .env
+APP_PORT=8081
+
+# Restart services
+docker compose down
+docker compose up -d
+```
+
+### High Memory Usage
+
+```bash
+# Check resource usage
+docker stats
+
+# Reduce memory limit in docker-compose.yml
+# Or increase available system memory
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Production Deployment" icon="rocket" href="/deployment/production">
+    Learn about production deployment strategies
+  </Card>
+  <Card title="Environment Variables" icon="key" href="/deployment/environment-variables">
+    Complete reference for all configuration options
+  </Card>
+</CardGroup>

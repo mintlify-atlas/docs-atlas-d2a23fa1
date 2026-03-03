@@ -1,0 +1,459 @@
+---
+title: Activity Logs
+description: Comprehensive audit trail system for tracking user actions and system events
+---
+
+## Overview
+
+POS Kasir implements a comprehensive activity logging system that tracks all significant user actions and system events. Activity logs provide an audit trail for security, compliance, and troubleshooting purposes.
+
+## Activity Log System
+
+### Get Activity Logs
+
+Retrieve activity logs with filtering and pagination.
+
+**Endpoint:** `GET /activity-logs`
+
+**Required Role:** Admin
+
+```go title="internal/activitylog/handler.go:25-78"
+func (h *ActivityLogHandler) GetActivityLogs(c fiber.Ctx) error {
+    ctx := c.RequestCtx()
+
+    var req GetActivityLogsRequest
+    if err := c.Bind().Query(&req); err != nil {
+        h.log.Errorf("Handler | GetActivityLogs | %v", err)
+        var ve *validator.ValidationErrors
+        if errors.As(err, &ve) {
+            return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+                Message: "Validation failed",
+                Error:   ve.Error(),
+                Data: map[string]interface{}{
+                    "errors": ve.Errors,
+                },
+            })
+        }
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Failed to parse query parameters",
+            Error:   err.Error(),
+        })
+    }
+
+    result, err := h.service.GetActivityLogs(ctx, req)
+    if err != nil {
+        h.log.Errorf("Handler | GetActivityLogs | %v", err)
+        return c.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+            Message: "Failed to retrieve activity logs",
+        })
+    }
+
+    return c.Status(fiber.StatusOK).JSON(common.SuccessResponse{
+        Message: "Success",
+        Data:    result,
+    })
+}
+```
+
+**Query Parameters:**
+- `page` - Page number (default: 1)
+- `limit` - Items per page (default: 10, max: 100)
+- `search` - Search term (searches in details)
+- `start_date` - Start date (YYYY-MM-DD)
+- `end_date` - End date (YYYY-MM-DD)
+- `user_id` - Filter by user ID (UUID)
+- `entity_type` - Filter by entity type
+- `action_type` - Filter by action type
+
+**Example Request:**
+```
+GET /activity-logs?page=1&limit=20&user_id=550e8400-e29b-41d4-a716-446655440000&entity_type=ORDER&action_type=CREATE
+```
+
+**Response:**
+```json
+{
+  "message": "Success",
+  "data": {
+    "logs": [
+      {
+        "id": "aa0e8400-e29b-41d4-a716-446655440005",
+        "user_id": "550e8400-e29b-41d4-a716-446655440000",
+        "user_name": "john_cashier",
+        "action_type": "CREATE",
+        "entity_type": "ORDER",
+        "entity_id": "880e8400-e29b-41d4-a716-446655440003",
+        "details": {
+          "order_type": "dine_in",
+          "total_amount": 75000,
+          "items_count": 2
+        },
+        "created_at": "2024-03-03T10:00:00Z"
+      },
+      {
+        "id": "bb0e8400-e29b-41d4-a716-446655440006",
+        "user_id": "550e8400-e29b-41d4-a716-446655440000",
+        "user_name": "john_cashier",
+        "action_type": "PROCESS_PAYMENT",
+        "entity_type": "ORDER",
+        "entity_id": "880e8400-e29b-41d4-a716-446655440003",
+        "details": {
+          "payment_method": "cash",
+          "amount_paid": 100000,
+          "change": 25000
+        },
+        "created_at": "2024-03-03T10:05:00Z"
+      }
+    ],
+    "total_items": 250,
+    "total_pages": 13,
+    "page": 1,
+    "limit": 20
+  }
+}
+```
+
+## Entity Types
+
+Activity logs track actions across different entity types:
+
+```go title="internal/activitylog/dto.go:17"
+EntityType *activitylog_repo.LogEntityType `query:"entity_type" validate:"omitempty,oneof=PRODUCT CATEGORY PROMOTION ORDER USER"`
+```
+
+- **PRODUCT** - Product-related actions (create, update, delete, restore)
+- **CATEGORY** - Category management actions
+- **PROMOTION** - Promotion configuration changes
+- **ORDER** - Order lifecycle events
+- **USER** - User management and authentication events
+
+## Action Types
+
+The system logs various action types:
+
+```go title="internal/activitylog/dto.go:18"
+ActionType *activitylog_repo.LogActionType `query:"action_type" validate:"omitempty,oneof=CREATE UPDATE DELETE CANCEL APPLY_PROMOTION PROCESS_PAYMENT REGISTER UPDATE_PASSWORD UPDATE_AVATAR LOGIN_SUCCESS LOGIN_FAILED"`
+```
+
+### General Actions
+- **CREATE** - Entity created
+- **UPDATE** - Entity updated
+- **DELETE** - Entity deleted
+
+### Order-Specific Actions
+- **CANCEL** - Order cancelled
+- **APPLY_PROMOTION** - Promotion applied to order
+- **PROCESS_PAYMENT** - Payment processed
+
+### User-Specific Actions
+- **REGISTER** - New user registered
+- **UPDATE_PASSWORD** - Password changed
+- **UPDATE_AVATAR** - Profile picture updated
+- **LOGIN_SUCCESS** - Successful login attempt
+- **LOGIN_FAILED** - Failed login attempt
+
+## Activity Logging in Code
+
+### User Registration Example
+
+```go title="internal/user/auth_service.go:264-282"
+actorID, ok := ctx.Value(common.UserIDKey).(uuid.UUID)
+if !ok {
+    s.Log.Warnf("Register | Actor user ID not found in context for activity logging")
+}
+
+logDetails := map[string]interface{}{
+    "created_username": user.Username,
+    "created_email":    user.Email,
+    "created_role":     user.Role,
+}
+
+s.ActivityLogger.Log(
+    ctx,
+    actorID,
+    activitylog_repo.LogActionTypeCREATE,
+    activitylog_repo.LogEntityTypeUSER,
+    user.ID.String(),
+    logDetails,
+)
+```
+
+### Password Update Example
+
+```go title="internal/user/auth_service.go:116-134"
+actorID, ok := ctx.Value(common.UserIDKey).(uuid.UUID)
+if !ok {
+    s.Log.Warnf("UpdatePassword | Actor user ID not found in context for activity logging")
+}
+
+logDetails := map[string]interface{}{
+    "updated_username": user.Username,
+    "updated_email":    user.Email,
+    "updated_role":     user.Role,
+}
+
+s.ActivityLogger.Log(
+    ctx,
+    actorID,
+    activitylog_repo.LogActionTypeUPDATEPASSWORD,
+    activitylog_repo.LogEntityTypeUSER,
+    user.ID.String(),
+    logDetails,
+)
+```
+
+### Login Tracking Example
+
+```go title="internal/user/auth_service.go:309-364"
+logDetails := map[string]interface{}{
+    "login_username": user.Username,
+    "login_email":    user.Email,
+    "login_role":     user.Role,
+}
+
+pass := utils.CheckPassword(user.PasswordHash, req.Password)
+if !pass {
+    s.Log.Errorf("Login | Failed to find user by email: %v", req.Email)
+    s.ActivityLogger.Log(
+        ctx,
+        user.ID,
+        activitylog_repo.LogActionTypeLOGINFAILED,
+        activitylog_repo.LogEntityTypeUSER,
+        user.ID.String(),
+        logDetails,
+    )
+    return nil, common.ErrInvalidCredentials
+}
+
+// On success
+s.ActivityLogger.Log(
+    ctx,
+    user.ID,
+    activitylog_repo.LogActionTypeLOGINSUCCESS,
+    activitylog_repo.LogEntityTypeUSER,
+    user.ID.String(),
+    logDetails,
+)
+```
+
+### Avatar Update Example
+
+```go title="internal/user/auth_service.go:186-202"
+actorID, ok := ctx.Value(common.UserIDKey).(uuid.UUID)
+if !ok {
+    s.Log.Warnf("UploadAvatar | Actor user ID not found in context for activity logging")
+}
+
+logDetails := map[string]interface{}{
+    "updated_username": profile.Username,
+    "updated_email":    profile.Email,
+    "updated_role":     profile.Role,
+    "updated_avatar":   url,
+}
+
+s.ActivityLogger.Log(
+    ctx,
+    actorID,
+    activitylog_repo.LogActionTypeUPDATEAVATAR,
+    activitylog_repo.LogEntityTypeUSER,
+    profile.ID.String(),
+    logDetails,
+)
+```
+
+## Activity Log Data Structure
+
+```go title="internal/activitylog/dto.go:21-30"
+type ActivityLogResponse struct {
+    ID         uuid.UUID                      `json:"id"`
+    UserID     uuid.UUID                      `json:"user_id"`
+    UserName   string                         `json:"user_name"`
+    ActionType activitylog_repo.LogActionType `json:"action_type"`
+    EntityType activitylog_repo.LogEntityType `json:"entity_type"`
+    EntityID   string                         `json:"entity_id"`
+    Details    map[string]interface{}         `json:"details"`
+    CreatedAt  time.Time                      `json:"created_at"`
+}
+```
+
+### Log Details Field
+
+The `details` field is a flexible JSON object that stores context-specific information:
+
+**User Actions:**
+```json
+{
+  "created_username": "john_cashier",
+  "created_email": "john@example.com",
+  "created_role": "cashier"
+}
+```
+
+**Order Actions:**
+```json
+{
+  "order_type": "dine_in",
+  "total_amount": 75000,
+  "items_count": 2,
+  "payment_method": "cash"
+}
+```
+
+**Product Actions:**
+```json
+{
+  "product_name": "Espresso",
+  "category_id": 1,
+  "price": 25000,
+  "stock_change": 50
+}
+```
+
+## Request DTO
+
+```go title="internal/activitylog/dto.go:10-19"
+type GetActivityLogsRequest struct {
+    Page       *int                            `query:"page" validate:"omitempty,min=1"`
+    Limit      *int                            `query:"limit" validate:"omitempty,min=1,max=100"`
+    Search     *string                         `query:"search" validate:"omitempty"`
+    StartDate  *string                         `query:"start_date" validate:"omitempty,datetime=2006-01-02"`
+    EndDate    *string                         `query:"end_date" validate:"omitempty,datetime=2006-01-02"`
+    UserID     *string                         `query:"user_id" validate:"omitempty,uuid"`
+    EntityType *activitylog_repo.LogEntityType `query:"entity_type" validate:"omitempty,oneof=PRODUCT CATEGORY PROMOTION ORDER USER"`
+    ActionType *activitylog_repo.LogActionType `query:"action_type" validate:"omitempty,oneof=CREATE UPDATE DELETE CANCEL APPLY_PROMOTION PROCESS_PAYMENT REGISTER UPDATE_PASSWORD UPDATE_AVATAR LOGIN_SUCCESS LOGIN_FAILED"`
+}
+```
+
+## Use Cases
+
+### Security Audit
+
+Track failed login attempts:
+
+```
+GET /activity-logs?action_type=LOGIN_FAILED&start_date=2024-03-01&end_date=2024-03-31
+```
+
+### User Activity Tracking
+
+Monitor specific user's actions:
+
+```
+GET /activity-logs?user_id=550e8400-e29b-41d4-a716-446655440000&page=1&limit=50
+```
+
+### Order Audit Trail
+
+Track all actions on a specific order:
+
+```javascript
+const orderId = '880e8400-e29b-41d4-a716-446655440003'
+const logs = await fetch(
+  `/activity-logs?entity_type=ORDER&search=${orderId}`
+).then(r => r.json())
+
+// Results show:
+// - Order creation
+// - Status updates
+// - Payment processing
+// - Cancellation (if any)
+```
+
+### Daily Activity Report
+
+Generate activity summary for a specific date:
+
+```javascript
+const date = '2024-03-03'
+const logs = await fetch(
+  `/activity-logs?start_date=${date}&end_date=${date}&limit=100`
+).then(r => r.json())
+
+const summary = {
+  totalActions: logs.data.total_items,
+  byType: groupBy(logs.data.logs, 'action_type'),
+  byUser: groupBy(logs.data.logs, 'user_name'),
+  byEntity: groupBy(logs.data.logs, 'entity_type')
+}
+```
+
+### Compliance Reporting
+
+Track sensitive operations:
+
+```
+GET /activity-logs?action_type=DELETE&entity_type=PRODUCT&start_date=2024-03-01&end_date=2024-03-31
+```
+
+## Logged Actions by Feature
+
+### Authentication & User Management
+- User login (success/failure)
+- User logout
+- Password changes
+- Profile updates
+- Avatar uploads
+- User creation
+- Role changes
+- User status toggles
+
+### Order Management
+- Order creation
+- Order status updates
+- Order cancellation
+- Payment processing
+- Promotion application
+- Order item modifications
+
+### Inventory Management
+- Product creation
+- Product updates
+- Product deletion
+- Stock adjustments
+- Category changes
+- Image uploads
+
+### System Configuration
+- Settings updates
+- Payment method changes
+- Promotion configuration
+
+## Best Practices
+
+1. **Contextual Information** - Always include relevant details in the log details field
+2. **User Identification** - Capture actor ID from context for all logged actions
+3. **Sensitive Data** - Never log passwords or payment card details
+4. **Retention Policy** - Implement log retention and archival policies
+5. **Search Optimization** - Index commonly queried fields (user_id, entity_type, action_type, created_at)
+6. **Async Logging** - Log activities asynchronously to avoid impacting request performance
+7. **Error Handling** - Gracefully handle logging failures without affecting main operations
+8. **Regular Reviews** - Periodically review logs for security incidents and anomalies
+
+## Performance Considerations
+
+- Activity logs can grow rapidly; consider:
+  - Database partitioning by date
+  - Archiving old logs to cold storage
+  - Elasticsearch for advanced search capabilities
+  - Async logging to prevent request blocking
+  - Background jobs for heavy analytics
+
+## Security Considerations
+
+### Access Control
+- Only Admins can access activity logs
+- Logs are read-only (no update/delete operations)
+- All log access is itself logged
+
+### Data Protection
+- Redact sensitive information from details field
+- Implement log encryption at rest
+- Secure log transmission in distributed systems
+- Regular security audits of logged data
+
+## Related Features
+
+- [Authentication](/features/authentication) - Login/logout logging
+- [User Management](/features/user-management) - User action tracking
+- [Orders & POS](/features/orders-and-pos) - Order event logging
+- [Inventory Management](/features/inventory-management) - Product change tracking

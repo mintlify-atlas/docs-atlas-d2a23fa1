@@ -1,0 +1,358 @@
+---
+title: 'User Management'
+description: 'Endpoints for managing user accounts'
+---
+
+## Get All Users
+
+<CodeBlock title="GET /api/v1/users">
+Retrieve a list of users with pagination, filtering, and sorting.
+
+**Authentication Required:** Yes
+
+**Roles:** `admin`, `manager`, `cashier`
+</CodeBlock>
+
+### Query Parameters
+
+<ParamField query="page" type="integer" default="1">
+  Page number
+</ParamField>
+
+<ParamField query="limit" type="integer" default="10">
+  Items per page
+</ParamField>
+
+<ParamField query="search" type="string">
+  Search by username or email
+</ParamField>
+
+<ParamField query="role" type="string">
+  Filter by user role: `admin`, `manager`, or `cashier`
+</ParamField>
+
+<ParamField query="is_active" type="boolean">
+  Filter by active status
+</ParamField>
+
+<ParamField query="status" type="string">
+  Filter by account status: `active`, `deleted`, or `all`
+</ParamField>
+
+<ParamField query="sortBy" type="string">
+  Sort by column: `created_at` or `username`
+</ParamField>
+
+<ParamField query="sortOrder" type="string">
+  Sort direction: `asc` or `desc`
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  <ResponseField name="users" type="array">
+    Array of user objects
+  </ResponseField>
+  
+  <ResponseField name="pagination" type="object">
+    <ResponseField name="current_page" type="integer">
+      Current page number
+    </ResponseField>
+    
+    <ResponseField name="per_page" type="integer">
+      Items per page
+    </ResponseField>
+    
+    <ResponseField name="total_data" type="integer">
+      Total number of users
+    </ResponseField>
+    
+    <ResponseField name="total_page" type="integer">
+      Total number of pages
+    </ResponseField>
+  </ResponseField>
+</ResponseField>
+
+### Example
+
+```bash
+curl -X GET "https://localhost:8080/api/v1/users?page=1&limit=10&role=cashier" \
+  -H "Cookie: access_token=YOUR_TOKEN"
+```
+
+<ResponseExample>
+```json
+{
+  "message": "Users retrieved successfully",
+  "data": {
+    "users": [
+      {
+        "id": "550e8400-e29b-41d4-a716-446655440000",
+        "username": "cashier1",
+        "email": "cashier1@example.com",
+        "role": "cashier",
+        "is_active": true,
+        "created_at": "2024-01-01T00:00:00Z",
+        "updated_at": "2024-01-15T10:30:00Z"
+      }
+    ],
+    "pagination": {
+      "current_page": 1,
+      "per_page": 10,
+      "total_data": 1,
+      "total_page": 1
+    }
+  }
+}
+```
+</ResponseExample>
+
+---
+
+## Get User by ID
+
+<CodeBlock title="GET /api/v1/users/{id}">
+Retrieve detailed profile for a specific user by their ID.
+
+**Authentication Required:** Yes
+
+**Roles:** `admin`, `manager`
+</CodeBlock>
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  User ID (UUID format)
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  User profile information
+</ResponseField>
+
+### Example
+
+```bash
+curl -X GET https://localhost:8080/api/v1/users/550e8400-e29b-41d4-a716-446655440000 \
+  -H "Cookie: access_token=YOUR_TOKEN"
+```
+
+---
+
+## Create User
+
+<CodeBlock title="POST /api/v1/users">
+Create a new user account.
+
+**Authentication Required:** Yes
+
+**Roles:** `admin`
+</CodeBlock>
+
+### Request Body
+
+<ParamField body="username" type="string" required>
+  Username (3-50 characters)
+</ParamField>
+
+<ParamField body="email" type="string" required>
+  Email address (max 100 characters)
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  Password (6-100 characters)
+</ParamField>
+
+<ParamField body="role" type="string" required>
+  User role: `admin`, `manager`, or `cashier`
+</ParamField>
+
+<ParamField body="is_active" type="boolean">
+  Account active status (default: true)
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Created user profile information
+</ResponseField>
+
+### Example
+
+```bash
+curl -X POST https://localhost:8080/api/v1/users \
+  -H "Content-Type: application/json" \
+  -H "Cookie: access_token=YOUR_TOKEN" \
+  -d '{
+    "username": "newcashier",
+    "email": "newcashier@example.com",
+    "password": "securepass123",
+    "role": "cashier",
+    "is_active": true
+  }'
+```
+
+<ResponseExample>
+```json
+{
+  "message": "User created successfully",
+  "data": {
+    "id": "650e8400-e29b-41d4-a716-446655440001",
+    "username": "newcashier",
+    "email": "newcashier@example.com",
+    "role": "cashier",
+    "is_active": true,
+    "created_at": "2024-03-03T12:00:00Z"
+  }
+}
+```
+</ResponseExample>
+
+---
+
+## Update User
+
+<CodeBlock title="PUT /api/v1/users/{id}">
+Update details of an existing user account.
+
+**Authentication Required:** Yes
+
+**Roles:** `admin`
+</CodeBlock>
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  User ID (UUID format)
+</ParamField>
+
+### Request Body
+
+<ParamField body="username" type="string">
+  Username (3-50 characters)
+</ParamField>
+
+<ParamField body="email" type="string">
+  Email address (max 100 characters)
+</ParamField>
+
+<ParamField body="role" type="string">
+  User role: `admin`, `manager`, or `cashier`
+</ParamField>
+
+<ParamField body="is_active" type="boolean">
+  Account active status
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Updated user profile information
+</ResponseField>
+
+### Example
+
+```bash
+curl -X PUT https://localhost:8080/api/v1/users/650e8400-e29b-41d4-a716-446655440001 \
+  -H "Content-Type: application/json" \
+  -H "Cookie: access_token=YOUR_TOKEN" \
+  -d '{
+    "email": "updatedemail@example.com",
+    "is_active": false
+  }'
+```
+
+---
+
+## Toggle User Status
+
+<CodeBlock title="POST /api/v1/users/{id}/toggle-status">
+Toggle the is_active status of a user.
+
+**Authentication Required:** Yes
+
+**Roles:** `admin`
+</CodeBlock>
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  User ID (UUID format)
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+### Example
+
+```bash
+curl -X POST https://localhost:8080/api/v1/users/650e8400-e29b-41d4-a716-446655440001/toggle-status \
+  -H "Cookie: access_token=YOUR_TOKEN"
+```
+
+<ResponseExample>
+```json
+{
+  "message": "User status toggled successfully"
+}
+```
+</ResponseExample>
+
+---
+
+## Delete User
+
+<CodeBlock title="DELETE /api/v1/users/{id}">
+Hard delete a user from the system by their ID.
+
+**Authentication Required:** Yes
+
+**Roles:** `admin`
+</CodeBlock>
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  User ID (UUID format)
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+### Example
+
+```bash
+curl -X DELETE https://localhost:8080/api/v1/users/650e8400-e29b-41d4-a716-446655440001 \
+  -H "Cookie: access_token=YOUR_TOKEN"
+```
+
+<ResponseExample>
+```json
+{
+  "message": "User deleted successfully"
+}
+```
+</ResponseExample>

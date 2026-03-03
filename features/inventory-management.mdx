@@ -1,0 +1,585 @@
+---
+title: Inventory Management
+description: Product management with categories, variants, stock tracking, and image uploads
+---
+
+## Overview
+
+POS Kasir provides comprehensive inventory management with support for product categories, product variants (options), stock tracking with history, and image uploads for both products and variants.
+
+## Product Management
+
+### Create Product
+
+Create a new product with optional variants.
+
+**Endpoint:** `POST /products`
+
+**Required Role:** Admin, Manager
+
+```go title="internal/products/handler.go:439-482"
+func (h *PrdHandler) CreateProductHandler(ctx fiber.Ctx) error {
+    var req CreateProductRequest
+    if err := ctx.Bind().Body(&req); err != nil {
+        var ve *validator.ValidationErrors
+        if errors.As(err, &ve) {
+            return ctx.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+                Message: "Validation failed",
+                Error:   ve.Error(),
+                Data:    map[string]interface{}{"errors": ve.Errors},
+            })
+        }
+        return ctx.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid request body",
+            Error:   err.Error(),
+        })
+    }
+
+    productResponse, err := h.prdService.CreateProduct(ctx.RequestCtx(), req)
+    if err != nil {
+        return ctx.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+            Message: "Failed to create product",
+            Error:   err.Error(),
+        })
+    }
+
+    return ctx.Status(fiber.StatusCreated).JSON(common.SuccessResponse{
+        Message: "Product created successfully",
+        Data:    productResponse,
+    })
+}
+```
+
+**Request Body:**
+```json
+{
+  "name": "Espresso",
+  "category_id": 1,
+  "price": 25000,
+  "cost_price": 10000,
+  "stock": 100,
+  "options": [
+    {
+      "name": "Large",
+      "additional_price": 5000
+    },
+    {
+      "name": "Extra Shot",
+      "additional_price": 8000
+    }
+  ]
+}
+```
+
+**Response:**
+```json
+{
+  "message": "Product created successfully",
+  "data": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "name": "Espresso",
+    "category_id": 1,
+    "category_name": "Coffee",
+    "price": 25000,
+    "cost_price": 10000,
+    "stock": 100,
+    "created_at": "2024-03-03T10:00:00Z",
+    "updated_at": "2024-03-03T10:00:00Z",
+    "options": [
+      {
+        "id": "660e8400-e29b-41d4-a716-446655440001",
+        "name": "Large",
+        "additional_price": 5000
+      }
+    ]
+  }
+}
+```
+
+### List Products
+
+**Endpoint:** `GET /products`
+
+**Required Role:** Admin, Manager, Cashier
+
+```go title="internal/products/handler.go:390-437"
+func (h *PrdHandler) ListProductsHandler(ctx fiber.Ctx) error {
+    var req ListProductsRequest
+    if err := ctx.Bind().Query(&req); err != nil {
+        var ve *validator.ValidationErrors
+        if errors.As(err, &ve) {
+            return ctx.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+                Message: "Validation failed",
+                Error:   ve.Error(),
+                Data:    map[string]interface{}{"errors": ve.Errors},
+            })
+        }
+        return ctx.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid query parameters",
+            Error:   err.Error(),
+        })
+    }
+
+    listResponse, err := h.prdService.ListProducts(ctx.RequestCtx(), req)
+    if err != nil {
+        return ctx.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+            Message: "Failed to retrieve products",
+        })
+    }
+
+    return ctx.Status(fiber.StatusOK).JSON(common.SuccessResponse{
+        Message: "Products retrieved successfully",
+        Data:    listResponse,
+    })
+}
+```
+
+**Query Parameters:**
+- `page` - Page number (default: 1)
+- `limit` - Items per page (default: 10, max: 100)
+- `search` - Search products by name
+- `category_id` - Filter by category ID
+
+**Example:**
+```
+GET /products?page=1&limit=10&category_id=1&search=coffee
+```
+
+### Update Product
+
+**Endpoint:** `PATCH /products/{id}`
+
+**Required Role:** Admin, Manager
+
+```go title="internal/products/handler.go:301-353"
+func (h *PrdHandler) UpdateProductHandler(ctx fiber.Ctx) error {
+    productID, err := fiber.Convert(ctx.Params("id"), uuid.Parse)
+    if err != nil {
+        return ctx.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid product ID format"
+        })
+    }
+
+    var req UpdateProductRequest
+    if err := ctx.Bind().Body(&req); err != nil {
+        var ve *validator.ValidationErrors
+        if errors.As(err, &ve) {
+            return ctx.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+                Message: "Validation failed",
+                Error:   ve.Error(),
+                Data:    map[string]interface{}{"errors": ve.Errors},
+            })
+        }
+        return ctx.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid request body", 
+            Error:   err.Error()
+        })
+    }
+
+    productResponse, err := h.prdService.UpdateProduct(ctx.RequestCtx(), productID, req)
+    if err != nil {
+        if errors.Is(err, common.ErrNotFound) {
+            return ctx.Status(fiber.StatusNotFound).JSON(common.ErrorResponse{
+                Message: "Product not found"
+            })
+        }
+        if errors.Is(err, common.ErrCategoryNotFound) {
+            return ctx.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+                Message: "Category not found"
+            })
+        }
+        return ctx.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+            Message: "Failed to update product"
+        })
+    }
+
+    return ctx.Status(fiber.StatusOK).JSON(common.SuccessResponse{
+        Message: "Product updated successfully",
+        Data:    productResponse,
+    })
+}
+```
+
+**Request Body:**
+```json
+{
+  "name": "Espresso (Updated)",
+  "price": 28000,
+  "stock": 150,
+  "change_type": "restock",
+  "note": "Restocked from supplier"
+}
+```
+
+### Upload Product Image
+
+**Endpoint:** `POST /products/{id}/image`
+
+**Required Role:** Admin, Manager
+
+```go title="internal/products/handler.go:484-547"
+func (h *PrdHandler) UploadProductImageHandler(ctx fiber.Ctx) error {
+    productID, err := fiber.Convert(ctx.Params("id"), uuid.Parse)
+    if err != nil {
+        return ctx.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid product ID format"
+        })
+    }
+
+    fileHeader, err := ctx.FormFile("image")
+    if err != nil {
+        return ctx.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Image file is required in 'image' field"
+        })
+    }
+
+    file, err := fileHeader.Open()
+    if err != nil {
+        return ctx.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+            Message: "Failed to process file"
+        })
+    }
+    defer file.Close()
+
+    buf := bytes.NewBuffer(nil)
+    if _, err := io.Copy(buf, file); err != nil {
+        return ctx.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+            Message: "Failed to read file"
+        })
+    }
+    fileBytes := buf.Bytes()
+
+    productResponse, err := h.prdService.UploadProductImage(ctx.RequestCtx(), productID, fileBytes)
+    if err != nil {
+        if errors.Is(err, common.ErrNotFound) {
+            return ctx.Status(fiber.StatusNotFound).JSON(common.ErrorResponse{
+                Message: "Product not found"
+            })
+        }
+        return ctx.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+            Message: "Failed to upload image",
+            Error:   err.Error(),
+        })
+    }
+
+    return ctx.Status(fiber.StatusOK).JSON(common.SuccessResponse{
+        Message: "Product image uploaded successfully",
+        Data:    productResponse,
+    })
+}
+```
+
+## Product Variants (Options)
+
+### Create Product Option
+
+**Endpoint:** `POST /products/{product_id}/options`
+
+**Required Role:** Admin, Manager
+
+```go title="internal/products/handler.go:215-264"
+func (h *PrdHandler) CreateProductOptionHandler(ctx fiber.Ctx) error {
+    productID, err := fiber.Convert(ctx.Params("product_id"), uuid.Parse)
+    if err != nil {
+        return ctx.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid product ID format"
+        })
+    }
+
+    var req CreateProductOptionRequestStandalone
+    if err := ctx.Bind().Body(&req); err != nil {
+        var ve *validator.ValidationErrors
+        if errors.As(err, &ve) {
+            return ctx.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+                Message: "Validation failed",
+                Error:   ve.Error(),
+                Data:    map[string]interface{}{"errors": ve.Errors},
+            })
+        }
+        return ctx.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid request body", 
+            Error:   err.Error()
+        })
+    }
+
+    optionResponse, err := h.prdService.CreateProductOption(ctx.RequestCtx(), productID, req)
+    if err != nil {
+        if errors.Is(err, common.ErrNotFound) {
+            return ctx.Status(fiber.StatusNotFound).JSON(common.ErrorResponse{
+                Message: "Parent product not found"
+            })
+        }
+        return ctx.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+            Message: "Failed to create product option"
+        })
+    }
+
+    return ctx.Status(fiber.StatusCreated).JSON(common.SuccessResponse{
+        Message: "Product option created successfully",
+        Data:    optionResponse,
+    })
+}
+```
+
+### Update Product Option
+
+**Endpoint:** `PATCH /products/{product_id}/options/{option_id}`
+
+**Required Role:** Admin, Manager
+
+### Upload Option Image
+
+**Endpoint:** `POST /products/{product_id}/options/{option_id}/image`
+
+**Required Role:** Admin, Manager
+
+## Stock Management
+
+### Stock History
+
+The system automatically tracks all stock changes with detailed history.
+
+**Endpoint:** `GET /products/{id}/stock-history`
+
+**Required Role:** Admin, Manager
+
+```go title="internal/products/handler.go:708-760"
+func (h *PrdHandler) GetStockHistoryHandler(ctx fiber.Ctx) error {
+    productID, err := fiber.Convert(ctx.Params("id"), uuid.Parse)
+    if err != nil {
+        return ctx.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid product ID format"
+        })
+    }
+
+    var req ListStockHistoryRequest
+    if err := ctx.Bind().Query(&req); err != nil {
+        var ve *validator.ValidationErrors
+        if errors.As(err, &ve) {
+            return ctx.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+                Message: "Validation failed",
+                Error:   ve.Error(),
+                Data:    map[string]interface{}{"errors": ve.Errors},
+            })
+        }
+        return ctx.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid query parameters",
+            Error:   err.Error(),
+        })
+    }
+
+    historyResponse, err := h.prdService.GetStockHistory(ctx.RequestCtx(), productID, req)
+    if err != nil {
+        if errors.Is(err, common.ErrNotFound) {
+            return ctx.Status(fiber.StatusNotFound).JSON(common.ErrorResponse{
+                Message: "Product not found"
+            })
+        }
+        return ctx.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+            Message: "Failed to retrieve stock history"
+        })
+    }
+
+    return ctx.Status(fiber.StatusOK).JSON(common.SuccessResponse{
+        Message: "Stock history retrieved successfully",
+        Data:    historyResponse,
+    })
+}
+```
+
+**Response:**
+```json
+{
+  "message": "Stock history retrieved successfully",
+  "data": {
+    "history": [
+      {
+        "id": "770e8400-e29b-41d4-a716-446655440000",
+        "product_id": "550e8400-e29b-41d4-a716-446655440000",
+        "change_amount": 50,
+        "previous_stock": 100,
+        "current_stock": 150,
+        "change_type": "restock",
+        "note": "Restocked from supplier",
+        "created_by": "660e8400-e29b-41d4-a716-446655440002",
+        "created_at": "2024-03-03T10:00:00Z"
+      },
+      {
+        "id": "880e8400-e29b-41d4-a716-446655440001",
+        "product_id": "550e8400-e29b-41d4-a716-446655440000",
+        "change_amount": -2,
+        "previous_stock": 102,
+        "current_stock": 100,
+        "change_type": "sale",
+        "reference_id": "990e8400-e29b-41d4-a716-446655440003",
+        "created_at": "2024-03-03T09:00:00Z"
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "limit": 10,
+      "total_items": 25,
+      "total_pages": 3
+    }
+  }
+}
+```
+
+### Stock Change Types
+
+- `sale` - Stock decreased due to order
+- `restock` - Stock increased from supplier
+- `correction` - Manual stock adjustment
+- `return` - Stock returned from customer
+- `damage` - Stock marked as damaged
+
+## Category Management
+
+### Create Category
+
+**Endpoint:** `POST /categories`
+
+**Required Role:** Admin, Manager
+
+```go title="internal/categories/handler.go:193-245"
+func (h *CtgHandler) CreateCategoryHandler(c fiber.Ctx) error {
+    ctx := c.RequestCtx()
+    req := new(CreateCategoryRequest)
+    if err := c.Bind().Body(req); err != nil {
+        var ve *validator.ValidationErrors
+        if errors.As(err, &ve) {
+            return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+                Message: "Validation failed",
+                Error:   ve.Error(),
+                Data:    map[string]interface{}{"errors": ve.Errors},
+            })
+        }
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid request body",
+        })
+    }
+
+    category, err := h.service.CreateCategory(ctx, *req)
+    if err != nil {
+        switch {
+        case errors.Is(err, common.ErrCategoryExists):
+            return c.Status(fiber.StatusConflict).JSON(common.ErrorResponse{
+                Message: "Category with this name already exists",
+            })
+        default:
+            return c.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+                Message: "Failed to create category",
+            })
+        }
+    }
+
+    return c.Status(fiber.StatusCreated).JSON(common.SuccessResponse{
+        Message: "Category created successfully",
+        Data:    category,
+    })
+}
+```
+
+### List Categories
+
+**Endpoint:** `GET /categories`
+
+**Required Role:** Admin, Manager, Cashier
+
+### Update Category
+
+**Endpoint:** `PUT /categories/{id}`
+
+**Required Role:** Admin, Manager
+
+### Delete Category
+
+**Endpoint:** `DELETE /categories/{id}`
+
+**Required Role:** Admin, Manager
+
+```go title="internal/categories/handler.go:33-80"
+func (h *CtgHandler) DeleteCategoryHandler(c fiber.Ctx) error {
+    ctx := c.RequestCtx()
+    categoryID := fiber.Params[int](c, "id")
+    if categoryID == 0 || c.Params("id") == "" {
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Invalid category ID format. ID must be a number.",
+        })
+    }
+
+    err := h.service.DeleteCategory(ctx, int32(categoryID))
+    if err != nil {
+        switch {
+        case errors.Is(err, common.ErrCategoryNotFound):
+            return c.Status(fiber.StatusNotFound).JSON(common.ErrorResponse{
+                Message: "Category not found",
+            })
+        case errors.Is(err, common.ErrCategoryInUse):
+            return c.Status(fiber.StatusConflict).JSON(common.ErrorResponse{
+                Message: "Category cannot be deleted because it is in use",
+            })
+        default:
+            return c.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+                Message: "Failed to delete category",
+            })
+        }
+    }
+
+    return c.Status(fiber.StatusOK).JSON(common.SuccessResponse{
+        Message: "Category deleted successfully",
+    })
+}
+```
+
+## Trash Management
+
+### List Deleted Products
+
+**Endpoint:** `GET /products/trash`
+
+**Required Role:** Admin
+
+### Restore Product
+
+**Endpoint:** `POST /products/trash/{id}/restore`
+
+**Required Role:** Admin
+
+### Bulk Restore Products
+
+**Endpoint:** `POST /products/trash/restore-bulk`
+
+**Required Role:** Admin
+
+## Data Transfer Objects
+
+```go title="internal/products/dto.go:15-32"
+type CreateProductRequest struct {
+    Name       string                       `json:"name" validate:"required,min=3,max=100"`
+    CategoryID int32                        `json:"category_id" validate:"required,gt=0"`
+    Price      float64                      `json:"price" validate:"required,gt=0"`
+    CostPrice  float64                      `json:"cost_price" validate:"required,gte=0"`
+    Stock      int32                        `json:"stock" validate:"required,gte=0"`
+    Options    []CreateProductOptionRequest `json:"options" validate:"dive"`
+}
+
+type UpdateProductRequest struct {
+    Name       *string  `json:"name" validate:"omitempty,min=3,max=100"`
+    CategoryID *int32   `json:"category_id" validate:"omitempty,gt=0"`
+    Price      *float64 `json:"price" validate:"omitempty,gt=0"`
+    CostPrice  *float64 `json:"cost_price" validate:"omitempty,gte=0"`
+    Stock      *int32   `json:"stock" validate:"omitempty,gte=0"`
+    Note       *string  `json:"note" validate:"omitempty,max=255"`
+    ChangeType *string  `json:"change_type" validate:"omitempty,oneof=sale restock correction return damage"`
+}
+```
+
+## Best Practices
+
+1. **Stock Tracking** - Always provide a change_type and note when updating stock
+2. **Category Assignment** - Validate category exists before assigning to product
+3. **Image Optimization** - Upload optimized images to reduce storage costs
+4. **Variant Pricing** - Use product options for size/add-on variations
+5. **Soft Delete** - Use trash endpoints for data recovery capabilities
+6. **Pagination** - Always use pagination for list endpoints to improve performance

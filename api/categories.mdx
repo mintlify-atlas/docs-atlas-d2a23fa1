@@ -1,0 +1,348 @@
+---
+title: 'Categories'
+description: 'Product category management endpoints'
+---
+
+## Get All Categories
+
+<CodeBlock title="GET /api/v1/categories">
+Get all categories with product count.
+
+**Authentication Required:** Yes
+
+**Roles:** `admin`, `manager`, `cashier`
+</CodeBlock>
+
+### Query Parameters
+
+<ParamField query="limit" type="integer">
+  Number of categories to return
+</ParamField>
+
+<ParamField query="offset" type="integer">
+  Offset for pagination
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="data" type="array">
+  <ResponseField name="id" type="integer">
+    Category ID
+  </ResponseField>
+  
+  <ResponseField name="name" type="string">
+    Category name
+  </ResponseField>
+  
+  <ResponseField name="product_count" type="integer">
+    Number of products in this category
+  </ResponseField>
+  
+  <ResponseField name="created_at" type="string">
+    Creation timestamp
+  </ResponseField>
+  
+  <ResponseField name="updated_at" type="string">
+    Last update timestamp
+  </ResponseField>
+</ResponseField>
+
+### Example
+
+```bash
+curl -X GET "https://localhost:8080/api/v1/categories?limit=10&offset=0" \
+  -H "Cookie: access_token=YOUR_TOKEN"
+```
+
+<ResponseExample>
+```json
+{
+  "message": "Categories retrieved successfully",
+  "data": [
+    {
+      "id": 1,
+      "name": "Beverages",
+      "product_count": 25,
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-02-15T10:30:00Z"
+    },
+    {
+      "id": 2,
+      "name": "Food",
+      "product_count": 18,
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-02-20T14:20:00Z"
+    }
+  ]
+}
+```
+</ResponseExample>
+
+---
+
+## Get Category by ID
+
+<CodeBlock title="GET /api/v1/categories/{id}">
+Get a specific category by its ID.
+
+**Authentication Required:** Yes
+
+**Roles:** `admin`, `manager`
+</CodeBlock>
+
+### Path Parameters
+
+<ParamField path="id" type="integer" required>
+  Category ID
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  <ResponseField name="id" type="integer">
+    Category ID
+  </ResponseField>
+  
+  <ResponseField name="name" type="string">
+    Category name
+  </ResponseField>
+  
+  <ResponseField name="created_at" type="string">
+    Creation timestamp
+  </ResponseField>
+  
+  <ResponseField name="updated_at" type="string">
+    Last update timestamp
+  </ResponseField>
+</ResponseField>
+
+### Example
+
+```bash
+curl -X GET https://localhost:8080/api/v1/categories/1 \
+  -H "Cookie: access_token=YOUR_TOKEN"
+```
+
+<ResponseExample>
+```json
+{
+  "message": "Category retrieved successfully",
+  "data": {
+    "id": 1,
+    "name": "Beverages",
+    "created_at": "2024-01-01T00:00:00Z",
+    "updated_at": "2024-02-15T10:30:00Z"
+  }
+}
+```
+</ResponseExample>
+
+---
+
+## Create Category
+
+<CodeBlock title="POST /api/v1/categories">
+Create a new category.
+
+**Authentication Required:** Yes
+
+**Roles:** `admin`, `manager`
+</CodeBlock>
+
+### Request Body
+
+<ParamField body="name" type="string" required>
+  Category name (3-100 characters)
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Created category information
+</ResponseField>
+
+### Example
+
+```bash
+curl -X POST https://localhost:8080/api/v1/categories \
+  -H "Content-Type: application/json" \
+  -H "Cookie: access_token=YOUR_TOKEN" \
+  -d '{
+    "name": "Desserts"
+  }'
+```
+
+<ResponseExample>
+```json
+{
+  "message": "Category created successfully",
+  "data": {
+    "id": 3,
+    "name": "Desserts",
+    "created_at": "2024-03-03T12:00:00Z",
+    "updated_at": "2024-03-03T12:00:00Z"
+  }
+}
+```
+</ResponseExample>
+
+---
+
+## Update Category
+
+<CodeBlock title="PUT /api/v1/categories/{id}">
+Update a category by its ID.
+
+**Authentication Required:** Yes
+
+**Roles:** `admin`, `manager`
+</CodeBlock>
+
+### Path Parameters
+
+<ParamField path="id" type="integer" required>
+  Category ID
+</ParamField>
+
+### Request Body
+
+<ParamField body="name" type="string" required>
+  Category name (3-100 characters)
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Updated category information
+</ResponseField>
+
+### Example
+
+```bash
+curl -X PUT https://localhost:8080/api/v1/categories/3 \
+  -H "Content-Type: application/json" \
+  -H "Cookie: access_token=YOUR_TOKEN" \
+  -d '{
+    "name": "Sweet Treats"
+  }'
+```
+
+<ResponseExample>
+```json
+{
+  "message": "Category updated successfully",
+  "data": {
+    "id": 3,
+    "name": "Sweet Treats",
+    "created_at": "2024-03-03T12:00:00Z",
+    "updated_at": "2024-03-03T14:30:00Z"
+  }
+}
+```
+</ResponseExample>
+
+---
+
+## Delete Category
+
+<CodeBlock title="DELETE /api/v1/categories/{id}">
+Delete a category by its ID.
+
+**Authentication Required:** Yes
+
+**Roles:** `admin`, `manager`
+
+**Note:** Category cannot be deleted if it has products assigned to it.
+</CodeBlock>
+
+### Path Parameters
+
+<ParamField path="id" type="integer" required>
+  Category ID
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+### Example
+
+```bash
+curl -X DELETE https://localhost:8080/api/v1/categories/3 \
+  -H "Cookie: access_token=YOUR_TOKEN"
+```
+
+<ResponseExample>
+```json
+{
+  "message": "Category deleted successfully"
+}
+```
+</ResponseExample>
+
+---
+
+## Get Category Count
+
+<CodeBlock title="GET /api/v1/categories/count">
+Get total number of categories with products.
+
+**Authentication Required:** Yes
+
+**Roles:** `admin`, `manager`, `cashier`
+</CodeBlock>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="data" type="array">
+  Array of category objects with product counts
+</ResponseField>
+
+### Example
+
+```bash
+curl -X GET https://localhost:8080/api/v1/categories/count \
+  -H "Cookie: access_token=YOUR_TOKEN"
+```
+
+<ResponseExample>
+```json
+{
+  "message": "Category count retrieved successfully",
+  "data": [
+    {
+      "id": 1,
+      "name": "Beverages",
+      "product_count": 25
+    },
+    {
+      "id": 2,
+      "name": "Food",
+      "product_count": 18
+    }
+  ]
+}
+```
+</ResponseExample>

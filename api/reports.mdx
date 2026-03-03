@@ -1,0 +1,398 @@
+---
+title: 'Reports & Analytics'
+description: 'Access sales reports and analytics data'
+---
+
+## Dashboard Summary
+
+<CodeGroup>
+```bash GET /reports/dashboard-summary
+curl -X GET "http://localhost:8080/api/v1/reports/dashboard-summary" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+</CodeGroup>
+
+Get high-level summary metrics for the dashboard.
+
+### Response
+
+<ResponseField name="data" type="object">
+  <Expandable title="DashboardSummaryResponse">
+    <ResponseField name="total_sales" type="number" required>
+      Total sales amount
+    </ResponseField>
+    
+    <ResponseField name="total_orders" type="integer" required>
+      Total number of orders
+    </ResponseField>
+    
+    <ResponseField name="unique_cashier" type="integer" required>
+      Number of unique cashiers
+    </ResponseField>
+    
+    <ResponseField name="total_products" type="integer" required>
+      Total number of products
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Roles
+
+Accessible by: `admin`, `manager`, `cashier`
+
+---
+
+## Sales Reports
+
+<CodeGroup>
+```bash GET /reports/sales
+curl -X GET "http://localhost:8080/api/v1/reports/sales?start_date=2024-01-01&end_date=2024-01-31" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+</CodeGroup>
+
+Get aggregated sales data grouped by date within a specified range.
+
+### Query Parameters
+
+<ParamField query="start_date" type="string" required>
+  Start date in YYYY-MM-DD format
+</ParamField>
+
+<ParamField query="end_date" type="string" required>
+  End date in YYYY-MM-DD format
+</ParamField>
+
+### Response
+
+<ResponseField name="data" type="array">
+  Array of daily sales summaries
+  
+  <Expandable title="SalesReport">
+    <ResponseField name="date" type="string" required>
+      Date of the sales data
+    </ResponseField>
+    
+    <ResponseField name="order_count" type="integer" required>
+      Number of orders on this date
+    </ResponseField>
+    
+    <ResponseField name="total_sales" type="number" required>
+      Total sales amount for this date
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Roles
+
+Accessible by: `admin`, `manager`, `cashier`
+
+---
+
+## Product Performance
+
+<CodeGroup>
+```bash GET /reports/products
+curl -X GET "http://localhost:8080/api/v1/reports/products?start_date=2024-01-01&end_date=2024-01-31" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+</CodeGroup>
+
+Get sales performance metrics for each product.
+
+### Query Parameters
+
+<ParamField query="start_date" type="string" required>
+  Start date in YYYY-MM-DD format
+</ParamField>
+
+<ParamField query="end_date" type="string" required>
+  End date in YYYY-MM-DD format
+</ParamField>
+
+### Response
+
+<ResponseField name="data" type="array">
+  Array of product performance data
+  
+  <Expandable title="ProductPerformanceResponse">
+    <ResponseField name="product_id" type="string" required>
+      Product UUID
+    </ResponseField>
+    
+    <ResponseField name="product_name" type="string" required>
+      Product name
+    </ResponseField>
+    
+    <ResponseField name="total_quantity" type="integer" required>
+      Total quantity sold
+    </ResponseField>
+    
+    <ResponseField name="total_revenue" type="number" required>
+      Total revenue from this product
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Roles
+
+Accessible by: `admin`, `manager`, `cashier`
+
+---
+
+## Payment Method Performance
+
+<CodeGroup>
+```bash GET /reports/payment-methods
+curl -X GET "http://localhost:8080/api/v1/reports/payment-methods?start_date=2024-01-01&end_date=2024-01-31" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+</CodeGroup>
+
+Get usage counts and totals for each payment method.
+
+### Query Parameters
+
+<ParamField query="start_date" type="string" required>
+  Start date in YYYY-MM-DD format
+</ParamField>
+
+<ParamField query="end_date" type="string" required>
+  End date in YYYY-MM-DD format
+</ParamField>
+
+### Response
+
+<ResponseField name="data" type="array">
+  Array of payment method performance data
+  
+  <Expandable title="PaymentMethodPerformanceResponse">
+    <ResponseField name="payment_method_id" type="integer" required>
+      Payment method ID
+    </ResponseField>
+    
+    <ResponseField name="payment_method_name" type="string" required>
+      Payment method name
+    </ResponseField>
+    
+    <ResponseField name="order_count" type="integer" required>
+      Number of orders using this payment method
+    </ResponseField>
+    
+    <ResponseField name="total_sales" type="number" required>
+      Total sales amount via this payment method
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Roles
+
+Accessible by: `admin`, `manager`, `cashier`
+
+---
+
+## Cashier Performance
+
+<CodeGroup>
+```bash GET /reports/cashier-performance
+curl -X GET "http://localhost:8080/api/v1/reports/cashier-performance?start_date=2024-01-01&end_date=2024-01-31" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+</CodeGroup>
+
+Get order counts and sales totals handled by each cashier.
+
+### Query Parameters
+
+<ParamField query="start_date" type="string" required>
+  Start date in YYYY-MM-DD format
+</ParamField>
+
+<ParamField query="end_date" type="string" required>
+  End date in YYYY-MM-DD format
+</ParamField>
+
+### Response
+
+<ResponseField name="data" type="array">
+  Array of cashier performance data
+  
+  <Expandable title="CashierPerformanceResponse">
+    <ResponseField name="user_id" type="string" required>
+      Cashier user UUID
+    </ResponseField>
+    
+    <ResponseField name="username" type="string" required>
+      Cashier username
+    </ResponseField>
+    
+    <ResponseField name="order_count" type="integer" required>
+      Number of orders processed by this cashier
+    </ResponseField>
+    
+    <ResponseField name="total_sales" type="number" required>
+      Total sales amount processed by this cashier
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Roles
+
+Accessible by: `admin`, `manager`, `cashier`
+
+---
+
+## Cancellation Reports
+
+<CodeGroup>
+```bash GET /reports/cancellations
+curl -X GET "http://localhost:8080/api/v1/reports/cancellations?start_date=2024-01-01&end_date=2024-01-31" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+</CodeGroup>
+
+Get statistics on order cancellations grouped by reason.
+
+### Query Parameters
+
+<ParamField query="start_date" type="string" required>
+  Start date in YYYY-MM-DD format
+</ParamField>
+
+<ParamField query="end_date" type="string" required>
+  End date in YYYY-MM-DD format
+</ParamField>
+
+### Response
+
+<ResponseField name="data" type="array">
+  Array of cancellation statistics
+  
+  <Expandable title="CancellationReportResponse">
+    <ResponseField name="reason_id" type="integer" required>
+      Cancellation reason ID
+    </ResponseField>
+    
+    <ResponseField name="reason" type="string" required>
+      Cancellation reason description
+    </ResponseField>
+    
+    <ResponseField name="cancelled_orders" type="integer" required>
+      Number of orders cancelled for this reason
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Roles
+
+Accessible by: `admin`, `manager`, `cashier`
+
+---
+
+## Profit Summary
+
+<CodeGroup>
+```bash GET /reports/profit-summary
+curl -X GET "http://localhost:8080/api/v1/reports/profit-summary?start_date=2024-01-01&end_date=2024-01-31" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+</CodeGroup>
+
+Get gross profit analytics grouped by date.
+
+### Query Parameters
+
+<ParamField query="start_date" type="string" required>
+  Start date in YYYY-MM-DD format
+</ParamField>
+
+<ParamField query="end_date" type="string" required>
+  End date in YYYY-MM-DD format
+</ParamField>
+
+### Response
+
+<ResponseField name="data" type="array">
+  Array of daily profit summaries
+  
+  <Expandable title="ProfitSummaryResponse">
+    <ResponseField name="date" type="string" required>
+      Date of the profit data
+    </ResponseField>
+    
+    <ResponseField name="total_revenue" type="number" required>
+      Total revenue for this date
+    </ResponseField>
+    
+    <ResponseField name="total_cogs" type="number" required>
+      Total cost of goods sold
+    </ResponseField>
+    
+    <ResponseField name="gross_profit" type="number" required>
+      Gross profit (revenue - COGS)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Roles
+
+Accessible by: `admin`, `manager`, `cashier`
+
+---
+
+## Product Profit Reports
+
+<CodeGroup>
+```bash GET /reports/profit-products
+curl -X GET "http://localhost:8080/api/v1/reports/profit-products?start_date=2024-01-01&end_date=2024-01-31" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+</CodeGroup>
+
+Get profitability metrics for each product sold.
+
+### Query Parameters
+
+<ParamField query="start_date" type="string" required>
+  Start date in YYYY-MM-DD format
+</ParamField>
+
+<ParamField query="end_date" type="string" required>
+  End date in YYYY-MM-DD format
+</ParamField>
+
+### Response
+
+<ResponseField name="data" type="array">
+  Array of product profit data
+  
+  <Expandable title="ProductProfitResponse">
+    <ResponseField name="product_id" type="string" required>
+      Product UUID
+    </ResponseField>
+    
+    <ResponseField name="product_name" type="string" required>
+      Product name
+    </ResponseField>
+    
+    <ResponseField name="total_sold" type="integer" required>
+      Total quantity sold
+    </ResponseField>
+    
+    <ResponseField name="total_revenue" type="number" required>
+      Total revenue from this product
+    </ResponseField>
+    
+    <ResponseField name="total_cogs" type="number" required>
+      Total cost of goods sold
+    </ResponseField>
+    
+    <ResponseField name="gross_profit" type="number" required>
+      Gross profit for this product
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Roles
+
+Accessible by: `admin`, `manager`, `cashier`

@@ -1,0 +1,140 @@
+---
+title: 'Quick Start'
+description: 'Get POS Kasir up and running in minutes'
+icon: 'rocket'
+---
+
+Get your POS Kasir system running quickly with Docker. This guide will have you up and running in under 5 minutes.
+
+## Prerequisites
+
+Before you begin, ensure you have the following installed:
+
+- **Go** 1.22 or higher
+- **Bun** 1.0 or higher (for frontend)
+- **Docker** and **Docker Compose**
+- **Git** for cloning the repository
+
+## Quick Setup
+
+<Steps>
+  <Step title="Clone the Repository">
+    Clone the POS Kasir repository to your local machine:
+    
+    ```bash
+    git clone https://github.com/agpprastyo/POS-kasir.git
+    cd POS-kasir
+    ```
+  </Step>
+
+  <Step title="Configure Environment Variables">
+    Copy the environment files for both backend and frontend:
+    
+    ```bash
+    cp .env.example .env
+    cp web/.env.example web/.env
+    ```
+    
+    The default configuration works for local development. You can customize settings later.
+  </Step>
+
+  <Step title="Start Docker Containers">
+    Launch the application using Docker Compose:
+    
+    ```bash
+    docker-compose up -d
+    ```
+    
+    This will start both the backend API and frontend web application.
+  </Step>
+
+  <Step title="Run Database Migrations">
+    Apply the database schema migrations:
+    
+    ```bash
+    make migrate-up
+    ```
+  </Step>
+
+  <Step title="Seed Sample Data (Optional)">
+    Populate the database with sample data including users, categories, and payment methods:
+    
+    ```bash
+    make seed
+    ```
+    
+    This creates default users:
+    - **Admin**: `admin@example.com` / `passwordrahasia`
+    - **Cashier**: `cashier@example.com` / `passwordrahasia`
+    - **Manager**: `manager@example.com` / `passwordrahasia`
+  </Step>
+
+  <Step title="Access the Application">
+    Open your browser and navigate to:
+    
+    - **Frontend**: [http://localhost:3000](http://localhost:3000)
+    - **API Documentation**: [http://localhost:8080/swagger/index.html](http://localhost:8080/swagger/index.html)
+    
+    Login with one of the seeded credentials to start using POS Kasir.
+  </Step>
+</Steps>
+
+## What's Next?
+
+Now that you have POS Kasir running, explore these guides:
+
+<CardGroup cols={2}>
+  <Card title="Detailed Installation" icon="download" href="/getting-started/installation">
+    Learn about manual installation and advanced setup options
+  </Card>
+  
+  <Card title="Configuration" icon="gear" href="/getting-started/configuration">
+    Configure database, JWT, payment gateway, and cloud storage
+  </Card>
+  
+  <Card title="First Steps" icon="book" href="/getting-started/first-steps">
+    Learn about user roles, initial setup, and basic operations
+  </Card>
+  
+  <Card title="API Reference" icon="code" href="/api/introduction">
+    Explore the complete API documentation
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Port Already in Use">
+    If port 3000 or 8080 is already in use, you can change the ports in your `.env` file:
+    
+    ```bash
+    APP_PORT=8081  # Change backend port
+    ```
+    
+    For frontend, modify the Docker configuration or run it outside Docker.
+  </Accordion>
+
+  <Accordion title="Database Connection Failed">
+    Ensure Docker containers are running:
+    
+    ```bash
+    docker-compose ps
+    ```
+    
+    Check your database configuration in `.env` matches your Docker setup.
+  </Accordion>
+
+  <Accordion title="Migration Errors">
+    If migrations fail, check the migration version:
+    
+    ```bash
+    make migrate-version
+    ```
+    
+    You may need to force a specific version if there are dirty migrations:
+    
+    ```bash
+    make migrate-force version=<version_number>
+    ```
+  </Accordion>
+</AccordionGroup>

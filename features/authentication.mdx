@@ -1,0 +1,392 @@
+---
+title: Authentication
+description: JWT-based authentication system with login/logout flows and token refresh
+---
+
+## Overview
+
+POS Kasir implements a secure JWT-based authentication system using HTTP-only cookies for token storage. The system supports role-based access control (RBAC) with three user roles: Admin, Manager, and Cashier.
+
+## Authentication Flow
+
+### Login Process
+
+The login endpoint authenticates users and returns access and refresh tokens via cookies.
+
+**Endpoint:** `POST /auth/login`
+
+```go title="internal/user/auth_handler.go:125-221"
+func (h *AthHandler) LoginHandler(c fiber.Ctx) error {
+    ctx := c.RequestCtx()
+    var req LoginRequest
+    if err := c.Bind().Body(&req); err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(common.ErrorResponse{
+            Message: "Failed to parse request body",
+            Error:   err.Error(),
+        })
+    }
+
+    resp, err := h.Service.Login(ctx, req)
+    if err != nil {
+        // Handle errors...
+    }
+
+    // Set access token cookie
+    cookie := &fiber.Cookie{
+        Name:     "access_token",
+        Value:    resp.Token,
+        HTTPOnly: true,
+        Secure:   h.cfg.Server.Env == "production",
+        Expires:  resp.ExpiredAt,
+    }
+    c.Cookie(cookie)
+
+    // Set refresh token cookie
+    refreshCookie := &fiber.Cookie{
+        Name:     "refresh_token",
+        Value:    resp.RefreshToken,
+        HTTPOnly: true,
+        Secure:   h.cfg.Server.Env == "production",
+    }
+    c.Cookie(refreshCookie)
+
+    return c.Status(fiber.StatusOK).JSON(common.SuccessResponse{
+        Message: "Success",
+        Data: fiber.Map{
+            "expired": resp.ExpiredAt,
+            "profile": resp.Profile,
+        },
+    })
+}
+```
+
+**Request Body:**
+```json
+{
+  "email": "admin@example.com",
+  "password": "password123"
+}
+```
+
+**Response:**
+```json
+{
+  "message": "Success",
+  "data": {
+    "expired": "2024-03-04T12:00:00Z",
+    "profile": {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "username": "admin",
+      "email": "admin@example.com",
+      "role": "admin",
+      "is_active": true
+    }
+  }
+}
+```
+
+### Token Verification
+
+The authentication middleware verifies JWT tokens on protected routes.
+
+```go title="internal/common/middleware/auth.go:12-44"
+func AuthMiddleware(tokenManager utils.Manager, log logger.ILogger) fiber.Handler {
+    return func(c fiber.Ctx) error {
+        token := c.Cookies("access_token")
+        if token == "" {
+            return c.Status(fiber.StatusUnauthorized).JSON(common.ErrorResponse{
+                Message: "unauthorized",
+            })
+        }
+        
+        claims, err := tokenManager.VerifyToken(token)
+        if err != nil {
+            return c.Status(fiber.StatusUnauthorized).JSON(common.ErrorResponse{
+                Message: "unauthorized",
+            })
+        }
+        
+        // Store user info in context
+        c.Locals("user", claims.Username)
+        c.Locals("role", UserRole(claims.Role))
+        c.Locals("email", claims.Email)
+        c.Locals("user_id", claims.UserID)
+        c.RequestCtx().SetUserValue(common.UserIDKey, claims.UserID)
+        
+        return c.Next()
+    }
+}
+```
+
+## Token Refresh
+
+The system uses refresh tokens to obtain new access tokens without re-authentication.
+
+**Endpoint:** `POST /auth/refresh`
+
+```go title="internal/user/auth_handler.go:517-583"
+func (h *AthHandler) RefreshHandler(c fiber.Ctx) error {
+    refreshToken := c.Cookies("refresh_token")
+    if refreshToken == "" {
+        return c.Status(fiber.StatusUnauthorized).JSON(common.ErrorResponse{
+            Message: "Refresh token missing",
+        })
+    }
+
+    resp, err := h.Service.RefreshToken(c.RequestCtx(), refreshToken)
+    if err != nil {
+        return c.Status(fiber.StatusUnauthorized).JSON(common.ErrorResponse{
+            Message: "Invalid or expired session",
+        })
+    }
+
+    // Issue new tokens
+    cookie := &fiber.Cookie{
+        Name:     "access_token",
+        Value:    resp.Token,
+        HTTPOnly: true,
+        Expires:  resp.ExpiredAt,
+    }
+    c.Cookie(cookie)
+    
+    // Return success response
+}
+```
+
+### Refresh Token Service Logic
+
+The service implements single-session enforcement by validating tokens against the database.
+
+```go title="internal/user/auth_service.go:382-443"
+func (s *AthService) RefreshToken(ctx context.Context, refreshToken string) (*LoginResponse, error) {
+    // 1. Verify token signature
+    claims, err := s.Token.VerifyToken(refreshToken)
+    if err != nil {
+        return nil, common.ErrUnauthorized
+    }
+
+    if claims.Type != "refresh" {
+        return nil, common.ErrUnauthorized
+    }
+
+    // 2. Check token in database (Single Session Enforcement)
+    user, err := s.UserRepo.GetUserByID(ctx, claims.UserID)
+    if err != nil {
+        return nil, common.ErrUnauthorized
+    }
+
+    if user.RefreshToken == nil || *user.RefreshToken != refreshToken {
+        return nil, common.ErrUnauthorized
+    }
+
+    // 3. Generate new tokens (Rotation)
+    newAccessToken, newExpiredAt, err := s.Token.GenerateToken(
+        user.Username, user.Email, user.ID, string(user.Role))
+    
+    newRefreshToken, _, err := s.Token.GenerateRefreshToken(
+        user.Username, user.Email, user.ID, string(user.Role))
+
+    // 4. Update database with new refresh token
+    if err := s.UserRepo.UpdateRefreshToken(ctx, user_repo.UpdateRefreshTokenParams{
+        ID:           user.ID,
+        RefreshToken: &newRefreshToken,
+    }); err != nil {
+        return nil, common.ErrInternal
+    }
+
+    return &LoginResponse{
+        ExpiredAt:    newExpiredAt,
+        Token:        newAccessToken,
+        RefreshToken: newRefreshToken,
+        Profile:      /* user profile */,
+    }, nil
+}
+```
+
+## Logout
+
+Logout clears authentication cookies.
+
+**Endpoint:** `POST /auth/logout`
+
+```go title="internal/user/auth_handler.go:223-260"
+func (h *AthHandler) LogoutHandler(c fiber.Ctx) error {
+    c.Cookie(&fiber.Cookie{
+        Name:     "access_token",
+        Value:    "",
+        Path:     "/",
+        Expires:  time.Unix(0, 0),
+        MaxAge:   -1,
+        HTTPOnly: true,
+    })
+    c.Cookie(&fiber.Cookie{
+        Name:     "refresh_token",
+        Value:    "",
+        Path:     "/",
+        Expires:  time.Unix(0, 0),
+        MaxAge:   -1,
+        HTTPOnly: true,
+    })
+    return c.Status(fiber.StatusOK).JSON(common.SuccessResponse{
+        Message: "Successfully logged out",
+    })
+}
+```
+
+## User Profile
+
+Authenticated users can retrieve their profile information.
+
+**Endpoint:** `GET /auth/me`
+
+```go title="internal/user/auth_handler.go:262-328"
+func (h *AthHandler) ProfileHandler(c fiber.Ctx) error {
+    ctx := c.RequestCtx()
+    var userUUID uuid.UUID
+    userVal := c.Locals("user_id")
+    if userVal == nil {
+        return c.Status(fiber.StatusInternalServerError).JSON(common.ErrorResponse{
+            Message: "No user ID in context",
+        })
+    }
+    
+    // Parse user ID from context
+    switch v := userVal.(type) {
+    case uuid.UUID:
+        userUUID = v
+    case string:
+        userUUID, err = uuid.Parse(v)
+    }
+
+    response, err := h.Service.Profile(ctx, userUUID)
+    if err != nil {
+        // Handle errors
+    }
+
+    return c.Status(fiber.StatusOK).JSON(common.SuccessResponse{
+        Message: "Success",
+        Data:    response,
+    })
+}
+```
+
+## Password Update
+
+Users can update their password while authenticated.
+
+**Endpoint:** `PUT /auth/me/password`
+
+**Request Body:**
+```json
+{
+  "old_password": "current_password",
+  "new_password": "new_password123"
+}
+```
+
+```go title="internal/user/auth_service.go:88-137"
+func (s *AthService) UpdatePassword(ctx context.Context, userID uuid.UUID, req UpdatePasswordRequest) error {
+    user, err := s.UserRepo.GetUserByID(ctx, userID)
+    if err != nil {
+        return common.ErrNotFound
+    }
+
+    // Verify old password
+    if !utils.CheckPassword(user.PasswordHash, req.OldPassword) {
+        return common.ErrInvalidCredentials
+    }
+
+    // Hash new password
+    newPassHash, err := utils.HashPassword(req.NewPassword)
+    if err != nil {
+        return common.ErrInvalidCredentials
+    }
+
+    // Update password in database
+    params := user_repo.UpdateUserPasswordParams{
+        ID:           userID,
+        PasswordHash: newPassHash,
+    }
+
+    if err := s.UserRepo.UpdateUserPassword(ctx, params); err != nil {
+        return common.ErrInternal
+    }
+
+    // Log activity
+    s.ActivityLogger.Log(
+        ctx,
+        actorID,
+        activitylog_repo.LogActionTypeUPDATEPASSWORD,
+        activitylog_repo.LogEntityTypeUSER,
+        user.ID.String(),
+        logDetails,
+    )
+
+    return nil
+}
+```
+
+## Security Features
+
+### HTTP-Only Cookies
+
+Tokens are stored in HTTP-only cookies to prevent XSS attacks:
+- `access_token` - Short-lived JWT for API authentication
+- `refresh_token` - Long-lived token for obtaining new access tokens
+
+### Single Session Enforcement
+
+Only one refresh token per user is valid at a time. When a new refresh token is issued:
+1. The old refresh token is invalidated
+2. Only the latest token stored in the database is accepted
+
+### Token Rotation
+
+Each refresh request generates a new pair of tokens, limiting the window of opportunity for token theft.
+
+### Role-Based Access Control
+
+The `RoleMiddleware` enforces minimum role requirements for routes:
+
+```go title="internal/common/middleware/role.go:15-47"
+var RoleLevel = map[UserRole]int{
+    UserRoleAdmin:   3,
+    UserRoleManager: 2,
+    UserRoleCashier: 1,
+}
+
+func RoleMiddleware(minRole UserRole) fiber.Handler {
+    return func(c fiber.Ctx) error {
+        roleVal := c.Locals("role")
+        var userRole UserRole
+
+        switch v := roleVal.(type) {
+        case UserRole:
+            userRole = v
+        case string:
+            userRole = UserRole(v)
+        default:
+            return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "invalid role"})
+        }
+
+        reqLevel, ok1 := RoleLevel[userRole]
+        minLevel, ok2 := RoleLevel[minRole]
+        if !ok1 || !ok2 {
+            return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "invalid role"})
+        }
+
+        if reqLevel < minLevel {
+            return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "insufficient role"})
+        }
+        return c.Next()
+    }
+}
+```
+
+## Best Practices
+
+1. **Always use HTTPS in production** - The `Secure` flag is automatically set based on environment
+2. **Handle token expiration gracefully** - Implement automatic refresh on 401 responses
+3. **Clear tokens on logout** - Both client and server should invalidate tokens
+4. **Validate user permissions** - Check role requirements before performing sensitive operations
+5. **Log authentication events** - All login attempts (success/failure) are logged for audit trails

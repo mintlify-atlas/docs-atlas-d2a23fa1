@@ -1,0 +1,607 @@
+---
+title: 'Production Deployment'
+description: 'Deploy POS Kasir to production servers with best practices'
+---
+
+## Overview
+
+This guide covers deploying POS Kasir to production environments with security hardening, performance optimization, and monitoring setup.
+
+## Deployment Architecture
+
+### Recommended Setup
+
+```
+┌─────────────────┐
+│   Load Balancer │
+│    (Optional)   │
+└────────┬────────┘
+         │
+┌────────▼────────┐
+│  Reverse Proxy  │
+│  (Nginx/Caddy)  │
+└────────┬────────┘
+         │
+    ┌────┴────┐
+    │         │
+┌───▼──┐  ┌──▼────┐
+│ Frontend│  │Backend│
+│  :3000  │  │ :8080 │
+└────────┘  └───┬───┘
+                │
+         ┌──────▼──────┐
+         │  PostgreSQL │
+         └─────────────┘
+```
+
+## Pre-Deployment Checklist
+
+### Infrastructure
+
+- [ ] Server meets minimum requirements (2GB RAM, 2 CPU cores)
+- [ ] PostgreSQL 14+ database provisioned
+- [ ] Domain name configured with DNS
+- [ ] SSL/TLS certificate obtained (Let's Encrypt recommended)
+- [ ] Firewall configured (allow ports 80, 443, 22)
+- [ ] Backup solution in place
+
+### Security
+
+- [ ] Strong passwords generated for all services
+- [ ] JWT secret generated (minimum 32 characters)
+- [ ] Database SSL enabled
+- [ ] Environment variables secured (not in git)
+- [ ] SSH key-based authentication enabled
+- [ ] Fail2ban or similar intrusion prevention installed
+
+### Monitoring
+
+- [ ] Log aggregation configured
+- [ ] Application monitoring setup
+- [ ] Database monitoring enabled
+- [ ] Disk space alerts configured
+- [ ] Uptime monitoring active
+
+## Server Requirements
+
+### Minimum Specifications
+
+- **CPU**: 2 cores
+- **RAM**: 2GB
+- **Storage**: 20GB SSD
+- **OS**: Ubuntu 22.04 LTS or similar
+- **Network**: 100 Mbps
+
+### Recommended Specifications
+
+- **CPU**: 4 cores
+- **RAM**: 4GB
+- **Storage**: 50GB SSD
+- **OS**: Ubuntu 22.04 LTS
+- **Network**: 1 Gbps
+
+## Installation Steps
+
+### 1. Server Preparation
+
+```bash
+# Update system
+sudo apt update && sudo apt upgrade -y
+
+# Install dependencies
+sudo apt install -y git curl wget software-properties-common
+
+# Install Docker
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+sudo usermod -aG docker $USER
+
+# Install Docker Compose
+sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
+
+# Verify installation
+docker --version
+docker-compose --version
+```
+
+### 2. Application Setup
+
+```bash
+# Create application directory
+sudo mkdir -p /opt/pos-kasir
+sudo chown $USER:$USER /opt/pos-kasir
+cd /opt/pos-kasir
+
+# Clone repository (or upload via CI/CD)
+git clone https://github.com/your-org/pos-kasir.git .
+
+# Create environment files
+cp .env.example .env
+cp web/.env.example web/.env
+```
+
+### 3. Configure Environment
+
+Edit `/opt/pos-kasir/.env` with production values:
+
+```bash
+# Production configuration
+APP_ENV=production
+APP_NAME=POS-Kasir
+APP_PORT=8080
+COOKIE_DOMAIN=your-domain.com
+WEB_FRONTEND_CROSS_ORIGIN=false
+
+# Database (use managed PostgreSQL in production)
+DB_HOST=your-postgres-host.com
+DB_PORT=5432
+DB_USER=pos_kasir_prod
+DB_PASSWORD=STRONG_RANDOM_PASSWORD_HERE
+DB_NAME=pos_kasir_prod
+DB_SSLMODE=require
+
+DB_MAX_OPEN_CONNECTIONS=25
+DB_MAX_IDLE_CONNECTIONS=5
+DB_MAX_LIFETIME_MINUTES=30
+
+# Enable auto migrations (or run manually)
+AUTO_MIGRATE=true
+MIGRATIONS_PATH=./sqlc/migrations
+
+# Production logging
+LOG_LEVEL=info
+LOG_JSON_FORMAT=true
+
+# JWT (generate strong secret)
+JWT_SECRET=GENERATE_RANDOM_32_CHAR_STRING_HERE
+JWT_DURATION_HOURS=24
+JWT_ISSUER=poskasir
+
+# Midtrans production
+MIDTRANS_SERVER_KEY=your-production-server-key
+MIDTRANS_IS_PROD=true
+
+# Cloudflare R2
+R2_ACCOUNT_ID=your-account-id
+R2_ACCESS_KEY=your-access-key
+R2_SECRET_KEY=your-secret-key
+R2_BUCKET=pos-kasir-prod
+R2_PUBLIC_DOMAIN=https://cdn.your-domain.com
+R2_EXPIRY_SECONDS=3600
+```
+
+<Warning>
+Never commit `.env` files to version control. Use environment variable injection from your hosting platform or secrets management system.
+</Warning>
+
+### 4. Database Setup
+
+```bash
+# Connect to PostgreSQL
+psql -h your-postgres-host.com -U postgres
+
+# Create database and user
+CREATE DATABASE pos_kasir_prod;
+CREATE USER pos_kasir_prod WITH PASSWORD 'STRONG_PASSWORD';
+GRANT ALL PRIVILEGES ON DATABASE pos_kasir_prod TO pos_kasir_prod;
+\q
+
+# Test connection
+psql -h your-postgres-host.com -U pos_kasir_prod -d pos_kasir_prod
+```
+
+If `AUTO_MIGRATE=false`, run migrations manually:
+
+```bash
+docker-compose run --rm backend ./main migrate
+```
+
+### 5. Build and Deploy
+
+```bash
+# Build images
+docker-compose build --no-cache
+
+# Start services
+docker-compose up -d
+
+# Verify services are running
+docker-compose ps
+docker-compose logs -f
+```
+
+### 6. Reverse Proxy Setup
+
+Install and configure Nginx:
+
+```bash
+sudo apt install -y nginx
+sudo systemctl enable nginx
+```
+
+Create `/etc/nginx/sites-available/pos-kasir`:
+
+```nginx
+upstream backend {
+    server localhost:8080;
+}
+
+upstream frontend {
+    server localhost:3000;
+}
+
+server {
+    listen 80;
+    server_name your-domain.com www.your-domain.com;
+    
+    # Redirect to HTTPS
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name your-domain.com www.your-domain.com;
+
+    # SSL configuration
+    ssl_certificate /etc/letsencrypt/live/your-domain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+
+    # Security headers
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+
+    # Frontend
+    location / {
+        proxy_pass http://frontend;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    # Backend API
+    location /api {
+        proxy_pass http://backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # Increase timeouts for long-running requests
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+
+    # Health check endpoint
+    location /health {
+        proxy_pass http://backend/health;
+        access_log off;
+    }
+
+    # Max upload size (adjust as needed)
+    client_max_body_size 10M;
+}
+```
+
+Enable site and restart Nginx:
+
+```bash
+sudo ln -s /etc/nginx/sites-available/pos-kasir /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl restart nginx
+```
+
+### 7. SSL Certificate Setup
+
+Use Certbot for Let's Encrypt:
+
+```bash
+# Install Certbot
+sudo apt install -y certbot python3-certbot-nginx
+
+# Obtain certificate
+sudo certbot --nginx -d your-domain.com -d www.your-domain.com
+
+# Test auto-renewal
+sudo certbot renew --dry-run
+```
+
+## Security Hardening
+
+### Firewall Configuration
+
+```bash
+# Install UFW
+sudo apt install -y ufw
+
+# Allow SSH, HTTP, HTTPS
+sudo ufw allow 22/tcp
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+
+# Enable firewall
+sudo ufw enable
+sudo ufw status
+```
+
+### Fail2ban Setup
+
+```bash
+# Install Fail2ban
+sudo apt install -y fail2ban
+
+# Create local configuration
+sudo cp /etc/fail2ban/jail.conf /etc/fail2ban/jail.local
+
+# Edit configuration
+sudo nano /etc/fail2ban/jail.local
+# Set: bantime = 3600, maxretry = 5
+
+# Start service
+sudo systemctl enable fail2ban
+sudo systemctl start fail2ban
+```
+
+### Environment Variable Security
+
+<Note>
+In production, use secrets management instead of `.env` files:
+- AWS Secrets Manager
+- HashiCorp Vault
+- Docker Secrets
+- Kubernetes Secrets
+</Note>
+
+Example using Docker Secrets:
+
+```bash
+# Create secrets
+echo "your-jwt-secret" | docker secret create jwt_secret -
+echo "your-db-password" | docker secret create db_password -
+
+# Update docker-compose.yml to use secrets
+```
+
+## Monitoring and Logging
+
+### Application Logs
+
+```bash
+# View real-time logs
+docker-compose logs -f
+
+# Export logs to file
+docker-compose logs > /var/log/pos-kasir/app.log
+
+# Set up log rotation
+sudo nano /etc/logrotate.d/pos-kasir
+```
+
+Log rotation configuration:
+
+```
+/var/log/pos-kasir/*.log {
+    daily
+    rotate 14
+    compress
+    delaycompress
+    notifempty
+    create 0640 root root
+    sharedscripts
+}
+```
+
+### Health Monitoring
+
+Create a systemd service for health checks:
+
+```bash
+sudo nano /etc/systemd/system/pos-kasir-health.service
+```
+
+```ini
+[Unit]
+Description=POS Kasir Health Check
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/pos-kasir-health-check.sh
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Health check script (`/usr/local/bin/pos-kasir-health-check.sh`):
+
+```bash
+#!/bin/bash
+HEALTH_URL="http://localhost:8080/health"
+RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $HEALTH_URL)
+
+if [ $RESPONSE -ne 200 ]; then
+    echo "Health check failed with status $RESPONSE"
+    # Send alert (email, Slack, etc.)
+    docker-compose restart backend
+fi
+```
+
+### Performance Monitoring
+
+Set up monitoring with Prometheus and Grafana (optional):
+
+```bash
+# Add to docker-compose.yml
+prometheus:
+  image: prom/prometheus
+  ports:
+    - "9090:9090"
+  volumes:
+    - ./prometheus.yml:/etc/prometheus/prometheus.yml
+
+grafana:
+  image: grafana/grafana
+  ports:
+    - "3001:3000"
+  depends_on:
+    - prometheus
+```
+
+## Backup and Recovery
+
+### Database Backup
+
+```bash
+# Create backup script
+sudo nano /usr/local/bin/pos-kasir-backup.sh
+```
+
+```bash
+#!/bin/bash
+BACKUP_DIR="/opt/backups/pos-kasir"
+DATE=$(date +%Y%m%d_%H%M%S)
+FILENAME="pos_kasir_${DATE}.sql.gz"
+
+mkdir -p $BACKUP_DIR
+
+# Dump database
+PGPASSWORD="$DB_PASSWORD" pg_dump -h $DB_HOST -U $DB_USER $DB_NAME | gzip > "${BACKUP_DIR}/${FILENAME}"
+
+# Keep only last 30 days
+find $BACKUP_DIR -type f -mtime +30 -delete
+
+echo "Backup completed: ${FILENAME}"
+```
+
+Schedule daily backups:
+
+```bash
+# Add to crontab
+crontab -e
+# Add: 0 2 * * * /usr/local/bin/pos-kasir-backup.sh
+```
+
+### Recovery
+
+```bash
+# Restore from backup
+gunzip < backup.sql.gz | psql -h $DB_HOST -U $DB_USER $DB_NAME
+```
+
+## CI/CD Integration
+
+### GitHub Actions Example
+
+```yaml
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Deploy to server
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script: |
+            cd /opt/pos-kasir
+            git pull origin main
+            docker-compose build --no-cache
+            docker-compose up -d
+            docker-compose logs --tail=50
+```
+
+## Troubleshooting
+
+### Service Won't Start
+
+```bash
+# Check logs
+docker-compose logs backend
+
+# Check port conflicts
+sudo netstat -tulpn | grep :8080
+
+# Restart services
+docker-compose restart
+```
+
+### High Memory Usage
+
+```bash
+# Check resource usage
+docker stats
+
+# Adjust resource limits in docker-compose.yml
+# Restart services
+docker-compose down && docker-compose up -d
+```
+
+### Database Connection Issues
+
+```bash
+# Test database connectivity
+telnet $DB_HOST $DB_PORT
+
+# Verify SSL configuration
+openssl s_client -connect $DB_HOST:$DB_PORT -starttls postgres
+
+# Check environment variables
+docker-compose exec backend env | grep DB_
+```
+
+## Maintenance
+
+### Regular Updates
+
+```bash
+# Update system packages
+sudo apt update && sudo apt upgrade -y
+
+# Update Docker images
+docker-compose pull
+docker-compose up -d
+
+# Clean up old images
+docker system prune -a
+```
+
+### Monitoring Checklist
+
+- [ ] Check application logs daily
+- [ ] Monitor disk space weekly
+- [ ] Review database performance monthly
+- [ ] Test backup restoration quarterly
+- [ ] Update SSL certificates before expiry
+- [ ] Review security patches weekly
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Docker Deployment" icon="docker" href="/deployment/docker">
+    Learn Docker-specific deployment details
+  </Card>
+  <Card title="Environment Variables" icon="key" href="/deployment/environment-variables">
+    Complete environment configuration reference
+  </Card>
+</CardGroup>
